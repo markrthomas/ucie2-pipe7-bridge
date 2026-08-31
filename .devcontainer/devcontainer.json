@@ -1,0 +1,22 @@
+{
+  "name": "ucie2-pipe7-bridge",
+  "build": {
+    "dockerfile": "../Dockerfile.dev",
+    "context": ".."
+  },
+  "remoteUser": "dev",
+  "containerUser": "dev",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.makefile-tools",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "redhat.vscode-yaml",
+        "mshr-h.veriloghdl"
+      ]
+    }
+  },
+  "onCreateCommand": "make lint && make pyuvm",
+  "shutdownAction": "stopContainer"
+}

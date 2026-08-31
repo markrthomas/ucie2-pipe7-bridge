@@ -1,0 +1,90 @@
+name: UVM on Verilator + cycle-accurate cross-check
+
+# Builds UVM-capable Verilator from source (the apt Verilator can't elaborate
+# UVM), lints + runs the SV UVM env (--binary), runs the PyUVM tier, and then
+# proves the two testbenches track cycle-for-cycle (tools/trace_compare.py).
+# This project does NOT use OSS CAD Suite.
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  VERILATOR_REF: v5.050
+  VERILATOR_PREFIX: /home/runner/verilator-install
+
+jobs:
+  uvm-verilator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Cache Verilator install
+        id: cache-verilator
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.VERILATOR_PREFIX }}
+          key: ${{ runner.os }}-verilator-${{ env.VERILATOR_REF }}-uvm
+
+      - name: Build UVM-capable Verilator (on cache miss)
+        if: steps.cache-verilator.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            git help2man perl python3 make autoconf g++ flex bison ccache \
+            libgoogle-perftools-dev numactl perl-doc libfl2 libfl-dev \
+            zlib1g zlib1g-dev
+          git clone --depth 1 --branch "$VERILATOR_REF" \
+            https://github.com/verilator/verilator verilator-src
+          cd verilator-src
+          autoconf && ./configure --prefix="$VERILATOR_PREFIX"
+          make -j"$(nproc)" && make install
+          # Keep the bundled Accellera UVM lib beside the install (survives cache).
+          mkdir -p "$VERILATOR_PREFIX/uvm"
+          cp -a test_regress/t/uvm/. "$VERILATOR_PREFIX/uvm/"
+
+      - name: Put Verilator on PATH + ensure ccache
+        run: |
+          echo "$VERILATOR_PREFIX/bin" >> "$GITHUB_PATH"
+          sudo apt-get update && sudo apt-get install -y ccache z3
+
+      - name: Lint SV UVM env (elaborate-only)
+        run: |
+          make lint-uvm \
+            VERILATOR="$VERILATOR_PREFIX/bin/verilator" \
+            UVM_HOME="$VERILATOR_PREFIX/uvm"
+
+      - name: Build + run SV UVM env (--binary, UVM_ERROR-gated)
+        run: |
+          make uvm \
+            VERILATOR="$VERILATOR_PREFIX/bin/verilator" \
+            UVM_HOME="$VERILATOR_PREFIX/uvm" \
+            BUILD_JOBS="$(nproc)"
+
+      # PyUVM tier under apt Verilator (separate from the source-built one above),
+      # to produce the PyUVM trace for the cross-check.
+      - name: Install apt Verilator + cocotb/pyuvm for the PyUVM tier
+        run: |
+          sudo apt-get install -y verilator iverilog python3-pip
+          pip install --break-system-packages cocotb pyuvm
+
+      - name: PyUVM tier
+        run: make pyuvm VERILATOR=/usr/bin/verilator
+
+      - name: Cycle-accurate cross-check (PyUVM trace == UVM trace)
+        run: make trace-compare
+
+      - name: Upload traces + UVM log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: uvm-verilator-traces
+          path: |
+            dv/pyuvm/build/bridge.trace
+            dv/uvm/vlt/obj/bridge.trace
+            dv/uvm/vlt/obj/run.log
+          retention-days: 7
+          if-no-files-found: ignore

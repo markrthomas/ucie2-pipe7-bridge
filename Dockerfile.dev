@@ -1,0 +1,39 @@
+# -----------------------------------------------------------------------------
+# ucie2-pipe7-bridge — DEV image (Codespaces devcontainer + local RTL/PyUVM).
+#
+# apt iverilog + verilator (NOT OSS CAD Suite) + a Python venv with cocotb/pyuvm.
+# Runs the local gates: `make lint` and `make pyuvm`. The apt Verilator here is
+# NOT UVM-capable — the SV UVM --binary gate uses the root `Dockerfile` (Verilator
+# from source) on CI/Railway.
+#
+#   Build:  docker build -f Dockerfile.dev -t ucie2-pipe7-dev .
+#   Run  :  docker run --rm -it ucie2-pipe7-dev            # -> make help
+#           docker run --rm ucie2-pipe7-dev make lint
+# -----------------------------------------------------------------------------
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PATH="/opt/venv/bin:${PATH}"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates curl git g++ make \
+      python3 python3-pip python3-venv python3-dev \
+      iverilog verilator \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --upgrade pip \
+    && /opt/venv/bin/pip install cocotb pyuvm
+
+WORKDIR /workspace
+COPY . /workspace
+
+RUN groupadd --system dev \
+    && useradd --system --gid dev --create-home --home-dir /home/dev dev \
+    && chown -R dev:dev /workspace /opt/venv
+USER dev
+
+CMD ["bash", "-lc", "make help"]

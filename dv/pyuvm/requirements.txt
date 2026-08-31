@@ -1,0 +1,6 @@
+# PyUVM-on-cocotb tier. Pins are loose on purpose; CI installs these into the
+# apt-verilator image. cocotb_coverage is only needed for the functional-coverage
+# cross-check (PLAN Item 12) and is CI-only.
+cocotb>=1.9
+pyuvm>=3.0
+# cocotb_coverage   # Item 12 (CI-only)

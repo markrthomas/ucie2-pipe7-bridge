@@ -1,0 +1,12 @@
+
+- Design a rtl UCIe 2.0 to PCIe PIPe 7.1 bridge in SystemVerilog in the rtl sub directory
+- the dv directory will contain one TB based on PyUVM and one based on verilator-uvm (latest)
+	-- The TB's should match and track on a cycle accurate basis
+- The environment will not use (OSS CAD Suite)
+- The env will use a container for Railway
+- The origin for this repo is GitHub which will have a CodeSpace and Prebuild config for all needed tools here
+- the env will only do lint check on UVM code not a full compile and run here
+- the env will also use ~/proj/ucie_rdi_to_pcie6_pipe7 as a TB & RTL code starting point if needed
+- the env will use ~/proj/IP-axi-to-2apbs as an env template
+- first write a plan and claude file
+
