@@ -1,8 +1,9 @@
-name: lint + pyuvm
+name: lint
 
-# Fast local-equivalent gates on apt tooling (NOT OSS CAD Suite):
-#   - RTL strict lint (Verilator -Wall)
-#   - PyUVM-on-cocotb tier
+# Fast RTL lint on apt Verilator (NOT OSS CAD Suite). The PyUVM tier and the
+# cycle-accurate cross-check need Verilator >= 5.036 (cocotb 2.x), which apt does
+# not yet ship, so they run in the uvm-verilator workflow against the from-source
+# Verilator 5.050 instead.
 
 on:
   push:
@@ -11,30 +12,16 @@ on:
     branches: [ main, master ]
 
 jobs:
-  lint-pyuvm:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install apt toolchain (verilator, iverilog)
+      - name: Install apt Verilator
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends verilator iverilog python3-pip
+          sudo apt-get install -y --no-install-recommends verilator
           verilator --version
-
-      - name: Install cocotb + pyuvm
-        run: pip install --break-system-packages cocotb pyuvm
 
       - name: RTL lint
         run: make lint
-
-      - name: PyUVM tier
-        run: make pyuvm
-
-      - name: Upload PyUVM trace
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pyuvm-trace
-          path: dv/pyuvm/build/bridge.trace
-          if-no-files-found: ignore

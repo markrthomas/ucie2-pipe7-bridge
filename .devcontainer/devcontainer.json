@@ -17,6 +17,6 @@
       ]
     }
   },
-  "onCreateCommand": "make lint && make pyuvm",
+  "onCreateCommand": "make lint",
   "shutdownAction": "stopContainer"
 }

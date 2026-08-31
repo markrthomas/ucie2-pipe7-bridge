@@ -70,10 +70,12 @@ overrides so it runs with whatever is on your PATH.
 
 ## Codespaces
 
-`.devcontainer/devcontainer.json` builds `Dockerfile.dev` (apt tools + cocotb/
-pyuvm) and, on create, runs `make lint && make pyuvm`. Enable **prebuilds** in the
-repo's Settings → Codespaces so a new Codespace starts with the image and caches
-warm.
+`.devcontainer/devcontainer.json` builds `Dockerfile.dev` (apt tools + a
+cocotb 1.x venv) and, on create, runs `make lint`. Run the PyUVM tier in the
+Codespace with `make pyuvm` (the image ships a cocotb/Verilator combo that works
+together — apt Verilator is 5.020, so cocotb is pinned to 1.x). Enable
+**prebuilds** in the repo's Settings → Codespaces so a new Codespace starts with
+the image and caches warm.
 
 ## Railway
 

@@ -24,9 +24,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       iverilog verilator \
     && rm -rf /var/lib/apt/lists/*
 
+# Pin the cocotb 1.x line: cocotb 2.x requires Verilator >= 5.036, but ubuntu's
+# apt Verilator is 5.020. The 1.x line runs the PyUVM smoke fine against it. The
+# authoritative cocotb-2.x + Verilator-5.050 run happens in CI (uvm-verilator).
 RUN python3 -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install cocotb pyuvm
+    && /opt/venv/bin/pip install 'cocotb<2.0' 'pyuvm<4'
 
 WORKDIR /workspace
 COPY . /workspace

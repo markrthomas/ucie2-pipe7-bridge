@@ -64,15 +64,13 @@ jobs:
             UVM_HOME="$VERILATOR_PREFIX/uvm" \
             BUILD_JOBS="$(nproc)"
 
-      # PyUVM tier under apt Verilator (separate from the source-built one above),
-      # to produce the PyUVM trace for the cross-check.
-      - name: Install apt Verilator + cocotb/pyuvm for the PyUVM tier
-        run: |
-          sudo apt-get install -y verilator iverilog python3-pip
-          pip install --break-system-packages cocotb pyuvm
+      # PyUVM tier uses the from-source Verilator 5.050 already on PATH (cocotb
+      # 2.x requires >= 5.036). This produces the PyUVM trace for the cross-check.
+      - name: Install cocotb/pyuvm for the PyUVM tier
+        run: pip install --break-system-packages cocotb pyuvm
 
       - name: PyUVM tier
-        run: make pyuvm VERILATOR=/usr/bin/verilator
+        run: make pyuvm
 
       - name: Cycle-accurate cross-check (PyUVM trace == UVM trace)
         run: make trace-compare
