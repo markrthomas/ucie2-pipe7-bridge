@@ -23,30 +23,18 @@ jobs:
       contents: read
       packages: write
     steps:
+      # Only actions/checkout@v5 (Node 24). Build+push via the docker CLI that is
+      # preinstalled on the runner — avoids the docker/* actions that still
+      # declare Node 20 and trip the deprecation warning.
       - uses: actions/checkout@v5
 
-      - name: Compute lowercase image name
-        id: img
-        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ucie2-pipe7-uvm" >> "$GITHUB_OUTPUT"
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build and push (latest + sha tags)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          tags: |
-            ${{ steps.img.outputs.name }}:latest
-            ${{ steps.img.outputs.name }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Build and push to GHCR (latest + sha tags)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/ucie2-pipe7-uvm"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker build -f Dockerfile -t "$IMAGE:latest" -t "$IMAGE:$GITHUB_SHA" .
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:$GITHUB_SHA"
