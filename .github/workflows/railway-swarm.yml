@@ -1,0 +1,54 @@
+name: railway swarm
+
+# Fire the cloud swarm on Railway from GitHub — the CI counterpart of the local
+# `make railway-swarm`. Manual (workflow_dispatch): provisioning cloud resources
+# costs money, so this never runs on push. Auth is a Railway project token in the
+# RAILWAY_TOKEN secret; the AI-dev (agents) mode also needs CLAUDE_CODE_OAUTH_TOKEN.
+#
+# Prereqs (one-time, in repo/org settings):
+#   - secret RAILWAY_TOKEN            (railway project/team token)
+#   - vars   RAILWAY_PROJECT, RAILWAY_ENVIRONMENT
+#   - secret CLAUDE_CODE_OAUTH_TOKEN  (only for mode=agents)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'gate (regression shards) or agents (AI-dev slice swarm)'
+        type: choice
+        options: [ gate, agents ]
+        default: gate
+      n:
+        description: 'number of swarm workers'
+        default: '8'
+      ref:
+        description: 'git ref the sandboxes clone (default: this commit)'
+        default: ''
+
+jobs:
+  swarm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.com/install.sh | sh
+          railway --version
+
+      - name: Fire swarm (SWARM_APPLY=1)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT: ${{ vars.RAILWAY_PROJECT }}
+          RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          SWARM_APPLY: '1'
+          MODE: ${{ inputs.mode }}
+          N: ${{ inputs.n }}
+          REF: ${{ inputs.ref || github.sha }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN secret is not set — cannot fire the swarm."
+            exit 1
+          fi
+          bash tools/railway_swarm.sh "$MODE"

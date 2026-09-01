@@ -25,7 +25,8 @@ RTL_PKG   := $(RTL_DIR)/ucie2_pipe7_pkg.sv
 RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
-.PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare clean
+.PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare \
+        railway-prebuild railway-swarm-probe railway-swarm railway-swarm-agents clean
 
 # Functional-coverage tier engine: Icarus in CI (independent from Verilator);
 # override locally with `make fcov FCOV_SIM=verilator`.
@@ -41,6 +42,11 @@ help:
 	@echo "  make lint-uvm      elaborate-only lint of the SV UVM env       [local]"
 	@echo "  make uvm           full SV UVM --binary build+run              [CI/Railway]"
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
+	@echo "  make railway-prebuild  build the prebuilt verilator-uvm image  [Docker]"
+	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
+	@echo "  make railway-swarm     N sandboxes: light elaborate smoke       [dry-run; SWARM_APPLY=1]"
+	@echo "  make railway-swarm-agents  AI-dev slice swarm (ca --claude)     [dry-run; SWARM_APPLY=1]"
+	@echo "                             (heavy --binary + trace_compare stay in CI)"
 	@echo "  make clean         remove build artifacts"
 
 # ---- RTL lint (the primary local gate) --------------------------------------
@@ -70,6 +76,33 @@ trace-compare:
 	$(PYTHON) tools/trace_compare.py \
 	  --pyuvm dv/pyuvm/build/bridge.trace \
 	  --uvm   dv/uvm/vlt/obj/bridge.trace
+
+# ---- Railway cloud swarm (CI/Railway have the RAM the local box lacks) -------
+# Prebuild the verilator-uvm toolchain image so swarm workers boot hot instead
+# of building Verilator from source. `docker` here is podman-shim-friendly.
+DOCKER      ?= docker
+SWARM_IMAGE ?= ghcr.io/markrthomas/ucie2-pipe7-uvm:latest
+
+railway-prebuild:
+	$(DOCKER) build -t $(SWARM_IMAGE) -f Dockerfile .
+	@echo "[railway-prebuild] built $(SWARM_IMAGE) — push with: $(DOCKER) push $(SWARM_IMAGE)"
+	@echo "[railway-prebuild] (CI publishes it via .github/workflows/prebuild-image.yml)"
+
+# Fire the cloud swarm. DRY-RUN by default (prints the railway commands, touches
+# nothing); set SWARM_APPLY=1 to actually provision. Tune with N=, SEEDS=, REF=.
+# The positional mode arg to the script is authoritative (don't set MODE= here).
+railway-swarm-probe:
+	RAILWAY="$(RAILWAY_CLI)" $(SWARM_ENV) tools/railway_swarm.sh probe
+
+railway-swarm:
+	RAILWAY="$(RAILWAY_CLI)" $(SWARM_ENV) tools/railway_swarm.sh gate
+
+railway-swarm-agents:
+	RAILWAY="$(RAILWAY_CLI)" $(SWARM_ENV) tools/railway_swarm.sh agents
+
+# Point at whatever railway binary is on PATH (falls back to `railway`).
+RAILWAY_CLI ?= $(shell command -v railway 2>/dev/null || echo railway)
+SWARM_ENV   ?=
 
 clean:
 	-$(MAKE) -C dv/pyuvm clean

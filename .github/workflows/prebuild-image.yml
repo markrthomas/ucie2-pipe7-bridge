@@ -1,0 +1,51 @@
+name: prebuild verilator-uvm image
+
+# The prebuild: build the from-source UVM-capable Verilator image (root
+# Dockerfile) ONCE and publish it to GHCR so every consumer — the Railway cloud
+# swarm, the CI uvm-verilator job, Codespaces — pulls a hot image instead of
+# rebuilding Verilator from source. This project does NOT use OSS CAD Suite.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'Dockerfile'
+      - 'docker/entrypoint.sh'
+      - 'rtl/**'
+      - 'dv/uvm/**'
+      - '.github/workflows/prebuild-image.yml'
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/ucie2-pipe7-uvm
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push (tags: latest + short sha)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
