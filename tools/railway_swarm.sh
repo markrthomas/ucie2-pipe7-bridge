@@ -47,6 +47,10 @@ APPLY="${SWARM_APPLY:-0}"
 # Model the AI-dev agents run on. Default to the small/cheap/efficient tier
 # (Haiku 4.5) to keep the swarm inexpensive; override with SWARM_MODEL=.
 SWARM_MODEL="${SWARM_MODEL:-claude-haiku-4-5-20251001}"
+# Optimize for TOKEN cost, not run time: small model + a tight thinking budget +
+# a read-only-what's-named prompt (no broad exploration). Raise SWARM_THINK if a
+# slice needs more reasoning headroom.
+SWARM_THINK="${SWARM_THINK:-2048}"
 
 # Project/environment selection: prefer explicit flags, else the linked project.
 PROJ_FLAGS=()
@@ -196,8 +200,8 @@ launch_agents() {
     # else mints a token interactively. AGENT_ARGS after `--` go to Claude Code.
     # ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL pin the (cheap) model in-VM.
     run ca start "${PROJ_FLAGS[@]}" --claude --new --name "$name" \
-        --variable "SWARM_SLICE=$slice,SWARM_REF=$REF,ANTHROPIC_MODEL=$SWARM_MODEL,ANTHROPIC_SMALL_FAST_MODEL=$SWARM_MODEL" \
-        -- -p "$task Reference: docs/phase_d_swarm.md and dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv. Check elaboration in-VM with 'make -C dv/uvm/vlt lint' (fits 4 GB), then push a branch — CI runs the authoritative --binary + trace_compare (heavy build does not fit the 4 GB VM)."
+        --variable "SWARM_SLICE=$slice,SWARM_REF=$REF,ANTHROPIC_MODEL=$SWARM_MODEL,ANTHROPIC_SMALL_FAST_MODEL=$SWARM_MODEL,MAX_THINKING_TOKENS=$SWARM_THINK" \
+        -- -p "$task Be token-frugal: read ONLY docs/phase_d_swarm.md, dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv, and the one dv/pyuvm file you mirror — do not grep/explore the tree or re-read files; keep reasoning terse. Check elaboration in-VM with 'make -C dv/uvm/vlt lint' (fits 4 GB), then push a branch — CI runs the authoritative --binary + trace_compare (heavy build does not fit the 4 GB VM)."
   done
 }
 
