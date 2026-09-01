@@ -51,7 +51,26 @@ There are TWO prebuild artifacts, by tier:
 - **Heavy-tier GHCR image** (from-source UVM Verilator) — for CI and any 8 GB
   service run. Not needed by the 4 GB sandbox tier.
 
-## Firing the swarm
+## Primary swarm: Docker + `.claude/agents` manager-subagent (`make swarm`)
+
+Adapted from the `axi-on-ucie-to-mem` sibling repo. One `claude -p` runs
+**non-bare** so `.claude/agents/*.md` load; a **`swarm-manager`** (opus) dispatches
+**`dv-env-tester`** subagents (haiku, read-only, one per tier: `lint`/`fcov`/
+`pyuvm`/`uvm`) + an **`infra-agent`** (sonnet), fixes reds, and **opens a PR** (a
+human merges; CI validates `--binary` UVM + `trace_compare` on the PR).
+
+- Launch: `make swarm` (or `SWARM_TASK="…" make swarm`; CI: the `DV swarm`
+  workflow, `docker/swarm.sh`). Needs `claude` + a credential
+  (`ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`); `GITHUB_TOKEN` to push/PR.
+- Why this over the Railway `ca` path below: it **clones with `GITHUB_TOKEN`** (so
+  it can open a PR — the gap that sank the `ca` run) and runs where the toolchain
+  actually is (Docker image / CI runner), not a bare 4 GB Railway agent VM. Model
+  tiers pinned in `docker/provider-env.sh` (opus/sonnet/haiku), so the cheap
+  read-only testers stay on Haiku. Optional `SWARM_MODEL_PROVIDER=kimi`.
+- Guardrail: the manager must NOT perturb the per-cycle trace emitters — the
+  byte-identical `trace_compare` gate runs on the PR.
+
+## Alternative: Railway `ca --claude` cloud VMs (experimental, gap-prone)
 
 `tools/railway_swarm.sh` (wrapped by `make railway-swarm[-agents]`) fans out
 N-wide. **Dry-run by default** — it prints the exact `railway` commands and

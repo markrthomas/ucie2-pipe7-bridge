@@ -47,8 +47,8 @@ help:
 	@echo "  make railway-template  build the 4GB sandbox toolchain template [Railway]"
 	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
 	@echo "  make railway-swarm     N sandboxes: light elaborate smoke       [dry-run; SWARM_APPLY=1]"
-	@echo "  make swarm             one-shot: fire the AI-dev swarm (alias)   [dry-run; SWARM_APPLY=1]"
-	@echo "  make railway-swarm-agents  AI-dev slice swarm (ca --claude)     [dry-run; SWARM_APPLY=1]"
+	@echo "  make swarm             DV swarm: manager+subagents, opens a PR   [needs claude + creds]"
+	@echo "  make railway-swarm-agents  Railway ca --claude swarm (alt path) [dry-run; SWARM_APPLY=1]"
 	@echo "                             (heavy --binary + trace_compare stay in CI)"
 	@echo "  make clean         remove build artifacts"
 
@@ -116,10 +116,16 @@ railway-swarm:
 railway-swarm-agents:
 	RAILWAY="$(RAILWAY_CLI)" $(SWARM_ENV) tools/railway_swarm.sh agents
 
-# One-shot alias to fire the AI-dev swarm on Railway. Dry-run unless SWARM_APPLY=1.
-#   make swarm                                  # preview (no cloud, no spend)
-#   SWARM_APPLY=1 CLAUDE_CODE_OAUTH_TOKEN=... make swarm   # fire it
-swarm: railway-swarm-agents
+# The DV swarm: Docker + .claude/agents manager-subagent model (adapted from the
+# axi-on-ucie-to-mem sibling). Runs Claude Code NON-bare; the swarm-manager
+# dispatches per-tier dv-env-testers + the infra-agent, fixes reds, and opens a
+# PR (a human merges; CI validates --binary UVM + trace_compare on the PR).
+# Needs `claude` on PATH + a credential (ANTHROPIC_API_KEY or
+# CLAUDE_CODE_OAUTH_TOKEN) and, to push/PR, GITHUB_TOKEN.
+#   make swarm                       # default finalization task
+#   SWARM_TASK="do X" make swarm     # custom task
+swarm:
+	bash docker/swarm.sh
 
 # Point at whatever railway binary is on PATH (falls back to `railway`).
 RAILWAY_CLI ?= $(shell command -v railway 2>/dev/null || echo railway)
