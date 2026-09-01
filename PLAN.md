@@ -181,7 +181,13 @@ predecessor (only the FDI front-end + top are new).
   invariants). `test_roundtrip` rebuilt on the env, drives the shared `.vec`, emits the
   canonical per-cycle trace **byte-identical** to the prior producer (verified — so the
   CI cross-check is unaffected). `make pyuvm` green (3-way agreement).
-- [ ] **12. Functional coverage** cross-check (cocotb_coverage under Icarus).
+- [x] **12. Functional coverage** cross-check — `dv/common/models/coverage_model.py`
+  (16 CoverPoints / 39 bins over control, msgbus, datapath, FDI flow) scored by
+  `cocotb_coverage`; `dv/pyuvm/test_fcov.py` drives the control sweep + msgbus sweep
+  (with an inline P2M sideband responder) + Gen5 FDI round-trip to an honest 100% of
+  the loopback-reachable set. `make fcov` runs on Icarus in CI (independent engine);
+  verified locally under Verilator (39/39 = 100%). The two error bins (sync_error=1,
+  rx_overflow=1) need an RX-inject wrapper — FLAGGED for Phase F.
 
 ### Phase D — DV tier 2: SystemVerilog UVM-on-Verilator
 - [ ] **13. Shared SV UVM env** (`dv/uvm/sv`): interfaces, agents, seq_lib,

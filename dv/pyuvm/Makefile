@@ -27,6 +27,10 @@ export PYTHONPATH := $(abspath ../common/models):$(abspath ../common/vectors):$(
 ifeq ($(SIM),verilator)
     EXTRA_ARGS += --trace --timing -Wno-fatal
 endif
+# Icarus (the independent engine for the functional-coverage tier) needs SV-2012.
+ifeq ($(SIM),icarus)
+    COMPILE_ARGS += -g2012
+endif
 
 include $(shell cocotb-config --makefiles)/Makefile.sim
 

@@ -66,8 +66,12 @@ The `verilator`/`iverilog` on this host's PATH are **oss-cad-suite** builds. Thi
 project must not *depend* on oss-cad-suite, so the reproducible envs
 (`.devcontainer/`, `Dockerfile*`, CI) install apt `verilator`/`iverilog` + a
 from-source UVM Verilator. The Makefile takes `VERILATOR`/`IVERILOG` overrides so
-local runs work with whatever is on PATH. `cocotb` 2.1 + `pyuvm` 4.0.1 are present
-locally (PyUVM tier runs here); `cocotb_coverage` is not (that tier is CI-only).
+local runs work with whatever is on PATH. `cocotb` + `pyuvm` 4.0.1 are present
+locally (PyUVM tier runs here). The functional-coverage tier (`make fcov`,
+Phase C item 12) uses `cocotb_coverage` on the **independent Icarus** engine in
+CI; it can also be run locally under Verilator (`make fcov FCOV_SIM=verilator`,
+needs `pip install "cocotb==1.9.2" "cocotb_coverage==1.2.0" "pyuvm==4.0.1"`).
+Local system Icarus is 11.0 (too old — SV package syntax); CI uses apt Icarus 12.
 
 ## Repo / workflow gotchas
 

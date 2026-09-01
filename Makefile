@@ -25,7 +25,11 @@ RTL_PKG   := $(RTL_DIR)/ucie2_pipe7_pkg.sv
 RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
-.PHONY: default help lint pyuvm lint-uvm uvm trace-compare clean
+.PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare clean
+
+# Functional-coverage tier engine: Icarus in CI (independent from Verilator);
+# override locally with `make fcov FCOV_SIM=verilator`.
+FCOV_SIM ?= icarus
 
 default: help
 
@@ -33,6 +37,7 @@ help:
 	@echo "ucie2-pipe7-bridge targets:"
 	@echo "  make lint          RTL strict lint (Verilator -Wall)          [local]"
 	@echo "  make pyuvm         PyUVM-on-cocotb tier                        [local]"
+	@echo "  make fcov          functional coverage (cocotb_coverage/Icarus) [CI; local: FCOV_SIM=verilator]"
 	@echo "  make lint-uvm      elaborate-only lint of the SV UVM env       [local]"
 	@echo "  make uvm           full SV UVM --binary build+run              [CI/Railway]"
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
@@ -47,6 +52,10 @@ lint:
 # Delegates to the cocotb Makefile. SIM/simulator selection lives there.
 pyuvm:
 	$(MAKE) -C dv/pyuvm
+
+# ---- Functional coverage tier (cocotb_coverage; Icarus in CI) ---------------
+fcov:
+	$(MAKE) -C dv/pyuvm MODULE=test_fcov SIM=$(FCOV_SIM)
 
 # ---- SV UVM env: lint only here (full build is CI/Railway) ------------------
 lint-uvm:

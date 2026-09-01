@@ -25,3 +25,37 @@ jobs:
 
       - name: RTL lint
         run: make lint
+
+  # Independent functional-coverage tier: cocotb_coverage on the Icarus engine
+  # (a different simulator + coverage tool + metric than the Verilator/UVM tiers).
+  # Pinned to the cocotb 1.9.x line that cocotb_coverage (~=1.8) supports; pyuvm
+  # 4.0.1 allows cocotb <3.0,>=1.6.0, so the three coexist.
+  fcov:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends iverilog
+          iverilog -V | head -1
+
+      - name: Install cocotb + cocotb_coverage + pyuvm (Icarus tier)
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install "cocotb==1.9.2" "cocotb_coverage==1.2.0" "pyuvm==4.0.1"
+
+      - name: Functional coverage (make fcov, Icarus)
+        run: |
+          mkdir -p report
+          FCOV_OUT="$(pwd)/report" make fcov
+
+      - name: Upload functional-coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: functional-coverage
+          path: report/fcov.*
+          retention-days: 7
+          if-no-files-found: ignore
