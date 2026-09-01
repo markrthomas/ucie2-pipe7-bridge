@@ -134,10 +134,14 @@ Makefile                  single entry point for every flow
 ## 7. Phased work items
 
 ### Phase A — foundation
-- [ ] **0. Spec cross-check.** Author `docs/ucie2_pipe71_spec_crosscheck.md`;
-  reconcile UCIe 2.0 (FDI + management/sideband) + PIPE 7.1 (Intel Ref 643108) +
-  PCIe 6.x; freeze the FDI signal list, register map, and encodings into
-  `rtl/*_pkg.sv`. §2 scope decisions are already locked — this verifies detail.
+- [x] **0. Spec cross-check — DONE 2026-08-31.** `docs/ucie2_pipe71_spec_crosscheck.md`
+  reconciles UCIe 2.0 FDI (public research: uciedigital + D2D deep-dive) + PIPE 7.1
+  (reused from predecessor, Intel Ref 643108) + PCIe 6.x. FDI signal list, PIPE
+  encodings, msgbus/register map, and Gen5 framing are **frozen** in
+  `rtl/ucie2_pipe7_pkg.sv` (every literal cited or `// FLAGGED`); the boundary
+  (shell + SV UVM if/tb/smoke + PyUVM smoke + trace columns) matches. FDI transfer
+  = 128b, mapping 1:1 onto the internal `{is_os,data128}` block. 4 FLAGGED items
+  (fdi_state encoding, is_os derivation, pl_flit_cancel, UCIe-2.0 mgmt mapping).
 - [ ] **1. Repo scaffold + env.** `Makefile`, `.devcontainer/` + Codespaces
   prebuild, `Dockerfile`/`Dockerfile.dev`/`Dockerfile.ci`, `.railway/railway.ts`,
   `docker/entrypoint.sh`, CI workflow skeletons (lint-only green first).

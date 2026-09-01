@@ -11,23 +11,24 @@ Observable DUT boundary only: sampled outputs the two environments must agree on
 """
 
 # Ordered column names. Column 0 is the free-running PCLK cycle index.
+# Observable DUT outputs on the frozen (Item 0) boundary.
 TRACE_COLUMNS = [
     "cycle",
-    "pl_state_sts",   # FDI link state reported to protocol layer
-    "pl_flit_valid",
-    "pl_valid",
-    "pl_trdy",
-    "pl_stallreq",
-    "tx_data_valid",
-    "tx_data",        # hex, no 0x prefix, zero-padded to PIPE_WIDTH/4 nibbles
-    "rate",
-    "power_down",
+    "pl_state_sts",    # FDI link state reported to protocol layer (fdi_state_e)
+    "pl_valid",        # FDI RX data valid
+    "pl_trdy",         # FDI TX ready
+    "pl_stallreq",     # FDI stall request
+    "pl_flit_cancel",  # FDI flit cancel
+    "tx_data_valid",   # PIPE TxDataValid
+    "tx_data",         # hex, no 0x prefix, zero-padded to PIPE_WIDTH/4 nibbles
+    "rate",            # PIPE Rate[3:0]
+    "power_down",      # PIPE PowerDown[3:0]
 ]
 
 TRACE_HEADER = ",".join(TRACE_COLUMNS)
 
 
-def format_row(cycle, sig, pipe_width=64):
+def format_row(cycle, sig, pipe_width=80):
     """Return one CSV trace line. ``sig`` maps column name -> int value."""
     nib = pipe_width // 4
     cells = [str(cycle)]

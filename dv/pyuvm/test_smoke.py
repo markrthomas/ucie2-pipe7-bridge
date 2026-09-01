@@ -15,7 +15,7 @@ from cocotb.triggers import RisingEdge, Timer
 import trace_format as tf
 
 N_CYCLES = 64
-PIPE_WIDTH = 64
+PIPE_WIDTH = 80
 
 
 def _i(handle):
@@ -36,10 +36,10 @@ async def smoke(dut):
     dut.pclk_rst_n.value = 0
     dut.lclk_rst_n.value = 0
     # Tie inputs to a defined idle so the shell simulates deterministically.
-    for name in ("lp_flit", "lp_flit_valid", "lp_valid", "lp_state_req",
-                 "lp_linkerror", "lp_stallack", "rx_data", "rx_data_k",
-                 "rx_data_valid", "rx_valid", "phy_status", "rx_status",
-                 "rx_elec_idle"):
+    for name in ("lp_data", "lp_valid", "lp_irdy", "lp_state_req",
+                 "lp_linkerror", "lp_stallack", "lp_rx_active_req", "lp_clk_ack",
+                 "lp_wake_req", "rx_data", "rx_valid", "phy_status", "rx_status",
+                 "rx_elec_idle", "p2m_message_bus"):
         if hasattr(dut, name):
             getattr(dut, name).value = 0
     await Timer(10, units="ns")
@@ -52,15 +52,15 @@ async def smoke(dut):
         for cyc in range(N_CYCLES):
             await RisingEdge(dut.pclk)
             row = {
-                "pl_state_sts":  _i(dut.pl_state_sts),
-                "pl_flit_valid": _i(dut.pl_flit_valid),
-                "pl_valid":      _i(dut.pl_valid),
-                "pl_trdy":       _i(dut.pl_trdy),
-                "pl_stallreq":   _i(dut.pl_stallreq),
-                "tx_data_valid": _i(dut.tx_data_valid),
-                "tx_data":       _i(dut.tx_data),
-                "rate":          _i(dut.rate),
-                "power_down":    _i(dut.power_down),
+                "pl_state_sts":   _i(dut.pl_state_sts),
+                "pl_valid":       _i(dut.pl_valid),
+                "pl_trdy":        _i(dut.pl_trdy),
+                "pl_stallreq":    _i(dut.pl_stallreq),
+                "pl_flit_cancel": _i(dut.pl_flit_cancel),
+                "tx_data_valid":  _i(dut.tx_data_valid),
+                "tx_data":        _i(dut.tx_data),
+                "rate":           _i(dut.rate),
+                "power_down":     _i(dut.power_down),
             }
             f.write(tf.format_row(cyc, row, PIPE_WIDTH) + "\n")
 

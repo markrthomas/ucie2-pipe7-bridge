@@ -53,9 +53,12 @@ where it ran (CI/Railway) — it is not run locally.
 - **Microarchitecture is the maintainer's call** per block ("most logical path");
   the plan fixes only the FDI/PIPE boundary contract.
 
-**No `rtl/*_pkg.sv` encoding is frozen until Item 0 (spec cross-check) signs off.**
-Don't invent spec encodings — verify against the controlled specs and record
-verdicts in `docs/ucie2_pipe71_spec_crosscheck.md`.
+**Item 0 (spec cross-check) is DONE — `rtl/ucie2_pipe7_pkg.sv` encodings are FROZEN.**
+Every literal is cited or `// FLAGGED` in `docs/ucie2_pipe71_spec_crosscheck.md`
+(FDI signal list, PIPE 7.1 encodings reused from the predecessor, Gen5 framing,
+msgbus/register map). FDI transfer = 128b, maps 1:1 to the internal `{is_os,data128}`
+block. Four FLAGGED items remain (fdi_state encoding, is_os derivation,
+pl_flit_cancel, UCIe-2.0 management mapping) — revisit, don't silently rely on them.
 
 ## Local toolchain reality
 
