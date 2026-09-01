@@ -52,9 +52,19 @@ package ucie2_pipe7_uvm_pkg;
 
     // Auto-complete the FDI stall handshake.
     task automatic stall_ack();
+      // cocotb's VPI signal writes have ~1-cycle latency relative to the
+      // clock edge (the write is queued and applied at the next simulator
+      // eval), so lp_stallack driven at cycle N in Python is visible to the
+      // RTL only at cycle N+2.  In SV a blocking assignment at #0.1 after
+      // posedge would be visible at cycle N+1.  Add one extra lclk+#0.1 wait
+      // between sampling and driving so the write lands one cycle later,
+      // matching the cocotb effective latency.
+      logic captured;
       forever begin
-        @(posedge vif.lclk); #0.1;
-        vif.lp_stallack = vif.pl_stallreq;
+        @(posedge vif.lclk); #0.1;    // cycle N: sample
+        captured = vif.pl_stallreq;
+        @(posedge vif.lclk); #0.1;    // cycle N+1: drive → visible to RTL at cycle N+2
+        vif.lp_stallack = captured;
       end
     endtask
 
