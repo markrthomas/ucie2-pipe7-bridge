@@ -27,7 +27,7 @@ RTL_TOP   := ucie2_pipe7_bridge
 
 .PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
-        railway-swarm-agents clean
+        railway-swarm-agents swarm clean
 
 # Functional-coverage tier engine: Icarus in CI (independent from Verilator);
 # override locally with `make fcov FCOV_SIM=verilator`.
@@ -47,6 +47,7 @@ help:
 	@echo "  make railway-template  build the 4GB sandbox toolchain template [Railway]"
 	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
 	@echo "  make railway-swarm     N sandboxes: light elaborate smoke       [dry-run; SWARM_APPLY=1]"
+	@echo "  make swarm             one-shot: fire the AI-dev swarm (alias)   [dry-run; SWARM_APPLY=1]"
 	@echo "  make railway-swarm-agents  AI-dev slice swarm (ca --claude)     [dry-run; SWARM_APPLY=1]"
 	@echo "                             (heavy --binary + trace_compare stay in CI)"
 	@echo "  make clean         remove build artifacts"
@@ -114,6 +115,11 @@ railway-swarm:
 
 railway-swarm-agents:
 	RAILWAY="$(RAILWAY_CLI)" $(SWARM_ENV) tools/railway_swarm.sh agents
+
+# One-shot alias to fire the AI-dev swarm on Railway. Dry-run unless SWARM_APPLY=1.
+#   make swarm                                  # preview (no cloud, no spend)
+#   SWARM_APPLY=1 CLAUDE_CODE_OAUTH_TOKEN=... make swarm   # fire it
+swarm: railway-swarm-agents
 
 # Point at whatever railway binary is on PATH (falls back to `railway`).
 RAILWAY_CLI ?= $(shell command -v railway 2>/dev/null || echo railway)
