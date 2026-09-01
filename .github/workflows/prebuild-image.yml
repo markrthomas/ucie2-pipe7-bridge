@@ -39,7 +39,7 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build + push (tags: latest + short sha)
+      - name: Build and push (latest + sha tags)
         uses: docker/build-push-action@v6
         with:
           context: .
