@@ -41,22 +41,22 @@ package ucie2_pipe7_uvm_pkg;
         `uvm_fatal("NOVIF", "virtual interface 'vif' not set in config_db")
     endfunction
 
-    // PHY loopback: rx follows tx by two pclk (matching cocotb VPI write latency).
-    // In SV a blocking write at posedge+#0.1 would be visible to the RTL at the
-    // next posedge (1-cycle delay). Python VPI writes have ~1 extra cycle of
-    // latency, making them visible 2 posedges after the write. Add one extra
-    // pclk cycle between sampling and driving so both TBs have the same 2-cycle
-    // loopback delay.
+    // PHY loopback: rx follows tx with a 2-cycle pipeline delay, matching
+    // cocotb's effective VPI write latency (write at posedge N → visible at N+2).
+    // In SV a blocking write at posedge+#0.1 is visible at N+1, so we keep a
+    // 1-cycle shadow register: drive the PREVIOUS cycle's sample at each edge,
+    // giving the RTL rx = tx from N-1 at cycle N+1 = a net 2-cycle delay.
+    // This covers every cycle (no skipped slots), preserving block alignment for
+    // the Gen5 128b/130b deframer.
     task automatic loopback();
-      logic [PW-1:0] cap_data;
-      logic          cap_valid;
+      logic [PW-1:0] cap_data  = '0;
+      logic          cap_valid = 1'b0;
       forever begin
-        @(posedge vif.pclk); #0.1;    // cycle N: sample tx outputs
-        cap_data  = vif.tx_data;
-        cap_valid = vif.tx_data_valid;
-        @(posedge vif.pclk); #0.1;    // cycle N+1: drive → visible to RTL at cycle N+2
-        vif.rx_data  = cap_data;
+        @(posedge vif.pclk); #0.1;
+        vif.rx_data  = cap_data;        // drive last cycle's capture
         vif.rx_valid = cap_valid;
+        cap_data  = vif.tx_data;        // update shadow for next cycle
+        cap_valid = vif.tx_data_valid;
       end
     endtask
 
