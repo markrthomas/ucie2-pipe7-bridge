@@ -99,7 +99,7 @@ railway-prebuild:
 SWARM_TEMPLATE ?= uvm
 railway-template:
 	$(RAILWAY_CLI) sandbox template build --name $(SWARM_TEMPLATE) --wait \
-	  -c 'apt-get update && apt-get install -y --no-install-recommends git make g++ ca-certificates verilator iverilog python3 python3-pip python3-venv' \
+	  -c 'apt-get update && apt-get install -y --no-install-recommends git make g++ ca-certificates verilator iverilog python3 python3-dev python3-pip python3-venv' \
 	  -c 'pip install --break-system-packages "cocotb==1.9.2" "cocotb_coverage==1.2.0" "pyuvm==4.0.1"'
 	@echo "[railway-template] built template '$(SWARM_TEMPLATE)'. Use: railway sandbox create --template $(SWARM_TEMPLATE)"
 

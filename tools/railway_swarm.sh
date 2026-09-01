@@ -72,8 +72,11 @@ preflight() {
     warn "no linked project — run 'railway link' or pass RAILWAY_PROJECT/RAILWAY_ENVIRONMENT"
     [ "$APPLY" = "1" ] && exit 1
   fi
-  if [ "$APPLY" = "1" ] && ! git merge-base --is-ancestor "$REF" origin/main 2>/dev/null; then
-    warn "REF ${REF:0:12} not found on origin/main — sandboxes clone from $REPO_URL; push first."
+  if [ "$APPLY" = "1" ]; then
+    # The sandbox clones REF from GitHub over HTTPS. We can't reliably verify an
+    # arbitrary commit is pushed from here (local `origin` is SSH and may lag), so
+    # just note it — the clone fails loudly if REF isn't on the remote.
+    say "sandboxes clone REF ${REF:0:12} from $REPO_URL — ensure it is pushed."
   fi
 }
 
