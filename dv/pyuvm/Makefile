@@ -20,8 +20,8 @@ TOPLEVEL := ucie2_pipe7_bridge
 # cycle-accurate trace). test_smoke.py remains for a quick idle bring-up check.
 MODULE   ?= test_roundtrip
 
-# Make the shared models importable from the test.
-export PYTHONPATH := $(abspath ../common/models):$(PYTHONPATH)
+# Make the shared models + vector generator importable from the test.
+export PYTHONPATH := $(abspath ../common/models):$(abspath ../common/vectors):$(PYTHONPATH)
 
 # Verilator needs SV + timing control for cocotb clock/reset stimulus.
 ifeq ($(SIM),verilator)

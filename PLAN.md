@@ -175,8 +175,12 @@ predecessor (only the FDI front-end + top are new).
   emitting a `$readmemh`-compatible `.vec` both TBs load. `ramp` profile reproduces the
   B4 directed sequence bit-exactly; `random` is seeded/reproducible. Committed
   `fdi_flits_ramp8.vec` (directed 8-flit).
-- [ ] **11. PyUVM env**: RDI agent, PIPE monitor, three-way scoreboard; per-cycle
-  trace emitter. `make pyuvm` green under apt Verilator.
+- [x] **11. PyUVM env**: `dv/pyuvm/{agents/fdi_agent,seq_lib/fdi_seq_lib,env}.py`
+  — FDI agent (driver + RX monitor), PIPE TX monitor, and a three-way `BridgeScoreboard`
+  (round-trip identity + framer-vs-model + deframe-vs-DUT, plus sync_error/lock
+  invariants). `test_roundtrip` rebuilt on the env, drives the shared `.vec`, emits the
+  canonical per-cycle trace **byte-identical** to the prior producer (verified — so the
+  CI cross-check is unaffected). `make pyuvm` green (3-way agreement).
 - [ ] **12. Functional coverage** cross-check (cocotb_coverage under Icarus).
 
 ### Phase D — DV tier 2: SystemVerilog UVM-on-Verilator
