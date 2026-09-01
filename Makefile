@@ -21,7 +21,8 @@ PYTHON    ?= python3
 
 RTL_DIR   := rtl
 RTL_PKG   := $(RTL_DIR)/ucie2_pipe7_pkg.sv
-RTL_SRCS  := $(RTL_PKG) $(RTL_DIR)/ucie2_pipe7_bridge.sv
+# Package first (declares types used by the rest), then every other rtl source.
+RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
 .PHONY: default help lint pyuvm lint-uvm uvm trace-compare clean
@@ -39,7 +40,7 @@ help:
 
 # ---- RTL lint (the primary local gate) --------------------------------------
 lint:
-	$(VERILATOR) --lint-only -Wall -sv $(RTL_SRCS)
+	$(VERILATOR) --lint-only -Wall -sv --top-module $(RTL_TOP) $(RTL_SRCS)
 	@echo "[lint] RTL OK"
 
 # ---- PyUVM-on-cocotb tier (runs locally) ------------------------------------

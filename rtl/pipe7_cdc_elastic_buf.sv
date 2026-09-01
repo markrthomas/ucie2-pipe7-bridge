@@ -1,0 +1,156 @@
+
+
+/**
+ * pipe7_cdc_elastic_buf -- parameterized dual-clock elastic buffer with
+ * Gray-coded pointer CDC and stable registered outputs.
+ *
+ * Ported from the predecessor `ucie_rdi_fifo_cdc` (proven + formally checked).
+ * Crosses the RDI clock domain and the PIPE PCLK domain in either direction:
+ *   - TX path: wr = RDI domain, rd = PCLK domain
+ *   - RX path: wr = PCLK domain, rd = RDI domain
+ * The module itself is domain-agnostic; the instantiating bridge assigns
+ * wr_clk / rd_clk to rdi_clk / pclk as appropriate.
+ */
+module pipe7_cdc_elastic_buf #(
+    parameter int INPUT_DATA_WIDTH  = 16,
+    parameter int OUTPUT_DATA_WIDTH = 32,
+    parameter int BUFFER_DEPTH      = 16
+) (
+    input  logic                          wr_clk,
+    input  logic                          rd_clk,
+    input  logic                          rst_n,
+
+    // Write domain
+    input  logic                          wr_valid,
+    output logic                          wr_ready,
+    input  logic [INPUT_DATA_WIDTH-1:0]   wr_data,
+    input  logic                          wr_error,
+    output logic                          wr_full,
+
+    // Read domain
+    output logic                          rd_valid,
+    input  logic                          rd_ready,
+    output logic [OUTPUT_DATA_WIDTH-1:0]  rd_data,
+    output logic                          rd_error
+);
+
+    localparam int PTR_WIDTH = $clog2(BUFFER_DEPTH) + 1;
+
+    // Storage is two parallel memories (data + error) rather than an array of a packed
+    // {data,error} struct. The two forms are functionally identical, but the parallel-memory
+    // form is portable across the independent DV engine (iverilog cannot elaborate an
+    // array-of-packed-struct with a bit-select on a field -- it hits a packed-dimensions
+    // assertion), whereas Verilator handles both. Keeping this form lets both engines run the
+    // identical shipped RTL (see docs/verification_plan.md, Phase G).
+    logic [INPUT_DATA_WIDTH-1:0] buf_data  [BUFFER_DEPTH];
+    logic                        buf_error [BUFFER_DEPTH];
+
+    // --- Gray Code Conversions ---
+    function automatic logic [PTR_WIDTH-1:0] bin2gray(input logic [PTR_WIDTH-1:0] bin);
+        return bin ^ (bin >> 1);
+    endfunction
+
+    function automatic logic [PTR_WIDTH-1:0] gray2bin(input logic [PTR_WIDTH-1:0] gray);
+        logic [PTR_WIDTH-1:0] bin;
+        bin[PTR_WIDTH-1] = gray[PTR_WIDTH-1];
+        for (int i = PTR_WIDTH-2; i >= 0; i--) begin
+            bin[i] = bin[i+1] ^ gray[i];
+        end
+        return bin;
+    endfunction
+
+    // --- Write Domain ---
+    logic [PTR_WIDTH-1:0] wr_ptr;
+    logic [PTR_WIDTH-1:0] wr_ptr_gray;
+    assign wr_ptr_gray = bin2gray(wr_ptr);
+
+    always_ff @(posedge wr_clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wr_ptr <= '0;
+        end else if (wr_valid && wr_ready) begin
+            buf_data [wr_ptr[PTR_WIDTH-2:0]] <= wr_data;
+            buf_error[wr_ptr[PTR_WIDTH-2:0]] <= wr_error;
+            wr_ptr <= wr_ptr + 1'b1;
+        end
+    end
+
+    // --- CDC: Write pointer (gray) to Read Domain ---
+    logic [PTR_WIDTH-1:0] wr_ptr_gray_sync_r1, wr_ptr_gray_sync;
+
+    always_ff @(posedge rd_clk or negedge rst_n) begin
+        if (!rst_n) begin
+            wr_ptr_gray_sync_r1 <= '0;
+            wr_ptr_gray_sync <= '0;
+        end else begin
+            wr_ptr_gray_sync_r1 <= wr_ptr_gray;
+            wr_ptr_gray_sync <= wr_ptr_gray_sync_r1;
+        end
+    end
+
+    // --- Read Domain ---
+    logic [PTR_WIDTH-1:0] rd_wr_ptr, rd_ptr;
+    logic empty;
+
+    assign rd_wr_ptr = gray2bin(wr_ptr_gray_sync);
+    assign empty = (rd_wr_ptr == rd_ptr);
+
+    logic [OUTPUT_DATA_WIDTH-1:0] rd_data_mux;
+    logic rd_error_mux;
+
+    generate
+        if (OUTPUT_DATA_WIDTH > INPUT_DATA_WIDTH) begin : GEN_EXTEND
+            assign rd_data_mux = {{(OUTPUT_DATA_WIDTH-INPUT_DATA_WIDTH){1'b0}},
+                                  buf_data[rd_ptr[PTR_WIDTH-2:0]]};
+        end else if (OUTPUT_DATA_WIDTH < INPUT_DATA_WIDTH) begin : GEN_TRUNCATE
+            assign rd_data_mux = buf_data[rd_ptr[PTR_WIDTH-2:0]][OUTPUT_DATA_WIDTH-1:0];
+        end else begin : GEN_DIRECT
+            assign rd_data_mux = buf_data[rd_ptr[PTR_WIDTH-2:0]];
+        end
+    endgenerate
+    assign rd_error_mux = buf_error[rd_ptr[PTR_WIDTH-2:0]];
+
+    // Standard registered output FIFO logic
+    always_ff @(posedge rd_clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rd_ptr   <= '0;
+            rd_valid <= 1'b0;
+            rd_data  <= '0;
+            rd_error <= 1'b0;
+        end else begin
+            if (rd_ready || !rd_valid) begin
+                if (!empty) begin
+                    rd_ptr   <= rd_ptr + 1'b1;
+                    rd_valid <= 1'b1;
+                    rd_data  <= rd_data_mux;
+                    rd_error <= rd_error_mux;
+                end else begin
+                    rd_valid <= 1'b0;
+                end
+            end
+        end
+    end
+
+    // --- CDC: Read pointer (gray) back to Write Domain ---
+    logic [PTR_WIDTH-1:0] rd_ptr_gray;
+    assign rd_ptr_gray = bin2gray(rd_ptr);
+
+    logic [PTR_WIDTH-1:0] rd_ptr_gray_sync_r1, rd_ptr_gray_sync;
+
+    always_ff @(posedge wr_clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rd_ptr_gray_sync_r1 <= '0;
+            rd_ptr_gray_sync <= '0;
+        end else begin
+            rd_ptr_gray_sync_r1 <= rd_ptr_gray;
+            rd_ptr_gray_sync <= rd_ptr_gray_sync_r1;
+        end
+    end
+
+    logic [PTR_WIDTH-1:0] wr_rd_ptr;
+    assign wr_rd_ptr = gray2bin(rd_ptr_gray_sync);
+
+    assign wr_full = (wr_ptr[PTR_WIDTH-2:0] == wr_rd_ptr[PTR_WIDTH-2:0]) &&
+                     (wr_ptr[PTR_WIDTH-1] != wr_rd_ptr[PTR_WIDTH-1]);
+    assign wr_ready = !wr_full;
+
+endmodule

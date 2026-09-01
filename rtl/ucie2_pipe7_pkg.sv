@@ -63,6 +63,7 @@ package ucie2_pipe7_pkg;
   // The bridge's PIPE_WIDTH parameter picks the active width (default 80).
   /* verilator lint_off UNUSEDPARAM */
   parameter int unsigned PIPE_WIDTH_MAX = 160;     // consumed by Phase-B datapath
+  parameter int unsigned BUFFER_DEPTH   = 16;      // CDC elastic-buffer entries
   /* verilator lint_on UNUSEDPARAM */
   parameter int unsigned PIPE_WIDTH     = 80;      // shell default (a legal width)
 
