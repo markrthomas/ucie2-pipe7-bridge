@@ -88,8 +88,11 @@ gate_cmd() {
   cat <<EOF
 set -euo pipefail
 git clone --depth 50 "$REPO_URL" work && cd work && git checkout "$REF"
-# Light elaborate-only smoke (fits 4 GB). Heavy --binary + trace_compare = CI.
-make -C dv/uvm/vlt lint VERILATOR=/opt/verilator/bin/verilator UVM_HOME=/opt/verilator/uvm
+# Light tiers that fit a 4 GB sandbox on the apt-toolchain template ('$SWARM_TEMPLATE'):
+# RTL strict lint (apt verilator) + independent functional coverage (iverilog).
+# Heavy --binary UVM + trace_compare stay in CI (uvm-verilator.yml).
+make lint
+make fcov FCOV_SIM=icarus
 EOF
 }
 

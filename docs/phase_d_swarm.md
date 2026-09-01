@@ -39,8 +39,17 @@ The root `Dockerfile` already produces the from-source UVM-capable Verilator 5.0
   `ghcr.io/markrthomas/ucie2-pipe7-uvm:{latest,<sha>}` on push to `main`.
 - **Local:** `make railway-prebuild` builds the same image (docker/podman).
 - Consumers (Railway swarm, CI `uvm-verilator`, Codespaces) pull it instead of
-  rebuilding Verilator. A Railway `sandbox template`/`checkpoint` can be seeded
-  from it so `sandbox create --template uvm` boots with the toolchain present.
+  rebuilding Verilator.
+
+There are TWO prebuild artifacts, by tier:
+
+- **Light-tier sandbox template `uvm`** (`make railway-template`) — apt
+  verilator + iverilog + cocotb/pyuvm/cocotb_coverage, built via
+  `railway sandbox template build` (fast: apt+pip, no source compile,
+  content-addressed + cached). Lets a 4 GB sandbox run `make lint` + `make fcov`.
+  `sandbox create --template uvm` boots with it present.
+- **Heavy-tier GHCR image** (from-source UVM Verilator) — for CI and any 8 GB
+  service run. Not needed by the 4 GB sandbox tier.
 
 ## Firing the swarm
 
@@ -51,7 +60,7 @@ touches nothing; set `SWARM_APPLY=1` to provision (spends money).
 | Mode | What each worker is | Command |
 |------|--------------------|---------|
 | `probe` | one sandbox that reports `nproc`/mem/os then self-destroys (mechanism check) | `make railway-swarm-probe` |
-| `gate` (default) | a 4 GB `railway sandbox` that clones REF + runs the LIGHT elaborate smoke (`dv/uvm/vlt lint`). Heavy `--binary` = CI. | `make railway-swarm` |
+| `gate` (default) | a 4 GB `railway sandbox` (from the `uvm` template) that clones REF + runs `make lint` + `make fcov` (RTL lint + functional coverage). Heavy `--binary` = CI. | `make railway-swarm` |
 | `agents` | a `railway ca --claude` cloud VM (Claude Code) that authors one env slice, `lint-uvm`-checks it in-VM, then pushes → CI validates `--binary` | `make railway-swarm-agents` |
 
 Knobs (env-style): `N=`, `SEEDS=`, `TESTS=`, `REF=`, `SWARM_TEMPLATE=`,

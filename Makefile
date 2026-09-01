@@ -26,7 +26,8 @@ RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
 .PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare \
-        railway-prebuild railway-swarm-probe railway-swarm railway-swarm-agents clean
+        railway-prebuild railway-template railway-swarm-probe railway-swarm \
+        railway-swarm-agents clean
 
 # Functional-coverage tier engine: Icarus in CI (independent from Verilator);
 # override locally with `make fcov FCOV_SIM=verilator`.
@@ -43,6 +44,7 @@ help:
 	@echo "  make uvm           full SV UVM --binary build+run              [CI/Railway]"
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
 	@echo "  make railway-prebuild  build the prebuilt verilator-uvm image  [Docker]"
+	@echo "  make railway-template  build the 4GB sandbox toolchain template [Railway]"
 	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
 	@echo "  make railway-swarm     N sandboxes: light elaborate smoke       [dry-run; SWARM_APPLY=1]"
 	@echo "  make railway-swarm-agents  AI-dev slice swarm (ca --claude)     [dry-run; SWARM_APPLY=1]"
@@ -87,6 +89,19 @@ railway-prebuild:
 	$(DOCKER) build -t $(SWARM_IMAGE) -f Dockerfile .
 	@echo "[railway-prebuild] built $(SWARM_IMAGE) — push with: $(DOCKER) push $(SWARM_IMAGE)"
 	@echo "[railway-prebuild] (CI publishes it via .github/workflows/prebuild-image.yml)"
+
+# Build the light-tier sandbox template so 4 GB sandboxes boot with the toolchain
+# for `make lint` + `make fcov` (apt verilator/iverilog + cocotb/pyuvm/cov). Fast
+# to build (apt+pip, no source compile). The heavy from-source UVM Verilator is
+# NOT here — that lives in CI / the GHCR image. Content-addressed + cached server
+# side, so a re-run with identical steps is an instant hit. Provisions build
+# compute (costs money): run it yourself with `!` or approve the prompt.
+SWARM_TEMPLATE ?= uvm
+railway-template:
+	$(RAILWAY_CLI) sandbox template build --name $(SWARM_TEMPLATE) --wait \
+	  -c 'apt-get update && apt-get install -y --no-install-recommends git make g++ ca-certificates verilator iverilog python3 python3-pip python3-venv' \
+	  -c 'pip install --break-system-packages "cocotb==1.9.2" "cocotb_coverage==1.2.0" "pyuvm==4.0.1"'
+	@echo "[railway-template] built template '$(SWARM_TEMPLATE)'. Use: railway sandbox create --template $(SWARM_TEMPLATE)"
 
 # Fire the cloud swarm. DRY-RUN by default (prints the railway commands, touches
 # nothing); set SWARM_APPLY=1 to actually provision. Tune with N=, SEEDS=, REF=.
