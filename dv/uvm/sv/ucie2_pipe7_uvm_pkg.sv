@@ -40,10 +40,14 @@ package ucie2_pipe7_uvm_pkg;
       fd = $fopen(path, "w");
       if (fd == 0) `uvm_fatal("TRACE", $sformatf("cannot open %s", path));
 
-      // Drive FDI/PIPE inputs to a defined idle and pulse both resets.
+      // Drive FDI/PIPE/management inputs to a defined idle and pulse both resets.
       vif.lp_data = '0; vif.lp_valid = 0; vif.lp_irdy = 0;
       vif.lp_state_req = '0; vif.lp_linkerror = 0; vif.lp_stallack = 0;
       vif.lp_rx_active_req = 0; vif.lp_clk_ack = 0; vif.lp_wake_req = 0;
+      vif.req_valid = 0; vif.req_kind = '0; vif.req_power_down = '0;
+      vif.req_rate = '0; vif.req_width = '0; vif.req_rxwidth = '0;
+      vif.mb_req_valid = 0; vif.mb_req_write = 0; vif.mb_req_committed = 0;
+      vif.mb_req_addr = '0; vif.mb_req_wdata = '0;
       vif.rx_data = '0; vif.rx_valid = 0; vif.phy_status = 0;
       vif.rx_status = '0; vif.rx_elec_idle = 0; vif.p2m_message_bus = '0;
 

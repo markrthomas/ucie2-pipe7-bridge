@@ -32,9 +32,11 @@ TOP     := tb_ucie2_pipe7
 
 INCS := +incdir+$(SV) +incdir+$(UVM_HOME) +incdir+$(VLT_DIR)
 
-# Compile order: RTL package, RTL DUT, UVM interface, UVM env package, tb top.
-SRCS := $(RTL)/ucie2_pipe7_pkg.sv \
-        $(RTL)/ucie2_pipe7_bridge.sv \
+# Compile order: RTL package first, then all RTL (FDI front-end + datapath + top),
+# then UVM interface, UVM env package, tb top.
+RTL_SRCS := $(RTL)/ucie2_pipe7_pkg.sv \
+            $(filter-out $(RTL)/ucie2_pipe7_pkg.sv,$(wildcard $(RTL)/*.sv))
+SRCS := $(RTL_SRCS) \
         $(SV)/ucie2_pipe7_if.sv \
         $(SV)/ucie2_pipe7_uvm_pkg.sv \
         $(SV)/tb_ucie2_pipe7.sv

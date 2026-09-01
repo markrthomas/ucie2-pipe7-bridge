@@ -9,7 +9,6 @@
 interface ucie2_pipe7_if #(
   parameter int unsigned FDI_W = 128,
   parameter int unsigned PW    = 80,
-  parameter int unsigned PK    = PW/8,
   parameter int unsigned MBW   = 8
 ) (
   input logic lclk,
@@ -40,9 +39,31 @@ interface ucie2_pipe7_if #(
   logic             lp_wake_req;
   logic             pl_wake_ack;
 
-  // PIPE MAC -> PHY
+  // Management: PIPE control request
+  logic             req_valid;
+  logic [1:0]       req_kind;
+  logic [3:0]       req_power_down;
+  logic [3:0]       req_rate;
+  logic [2:0]       req_width;
+  logic [2:0]       req_rxwidth;
+  logic             busy;
+  logic             done;
+  logic             req_error;
+  // Management: message-bus request
+  logic             mb_req_valid;
+  logic             mb_req_write;
+  logic             mb_req_committed;
+  logic [11:0]      mb_req_addr;
+  logic [7:0]       mb_req_wdata;
+  logic             mb_req_ready;
+  logic             mb_busy;
+  logic             mb_rsp_valid;
+  logic             mb_rsp_is_read;
+  logic [7:0]       mb_rsp_rdata;
+  logic             mb_rsp_error;
+
+  // PIPE MAC -> PHY (SerDes: no TxDataK — sync header embedded in TxData)
   logic [PW-1:0]    tx_data;
-  logic [PK-1:0]    tx_data_k;
   logic             tx_data_valid;
   logic [3:0]       rate;
   logic [3:0]       power_down;
@@ -59,4 +80,9 @@ interface ucie2_pipe7_if #(
   // PIPE message bus
   logic [MBW-1:0]   m2p_message_bus;
   logic [MBW-1:0]   p2m_message_bus;
+  // Bridge status
+  logic             block_locked;
+  logic             sync_error;
+  logic             in_data_phase;
+  logic             rx_overflow;
 endinterface : ucie2_pipe7_if

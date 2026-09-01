@@ -35,10 +35,13 @@ async def smoke(dut):
     # Assert both async resets, then release.
     dut.pclk_rst_n.value = 0
     dut.lclk_rst_n.value = 0
-    # Tie inputs to a defined idle so the shell simulates deterministically.
+    # Tie inputs to a defined idle so the bridge simulates deterministically.
     for name in ("lp_data", "lp_valid", "lp_irdy", "lp_state_req",
                  "lp_linkerror", "lp_stallack", "lp_rx_active_req", "lp_clk_ack",
-                 "lp_wake_req", "rx_data", "rx_valid", "phy_status", "rx_status",
+                 "lp_wake_req", "req_valid", "req_kind", "req_power_down",
+                 "req_rate", "req_width", "req_rxwidth", "mb_req_valid",
+                 "mb_req_write", "mb_req_committed", "mb_req_addr", "mb_req_wdata",
+                 "rx_data", "rx_valid", "phy_status", "rx_status",
                  "rx_elec_idle", "p2m_message_bus"):
         if hasattr(dut, name):
             getattr(dut, name).value = 0

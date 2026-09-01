@@ -14,7 +14,7 @@ module tb_ucie2_pipe7;
   import ucie2_pipe7_uvm_pkg::*;
 
   localparam int unsigned FDI_W = FDI_DW;
-  localparam int unsigned PW    = PIPE_WIDTH;
+  localparam int unsigned PW    = PIPE_WIDTH_DEFAULT;
   localparam int unsigned MBW   = MB_BUS_WIDTH;
 
   logic lclk = 0, pclk = 0;
@@ -50,8 +50,20 @@ module tb_ucie2_pipe7;
     .lp_rx_active_req(vif.lp_rx_active_req), .pl_rx_active_sts(vif.pl_rx_active_sts),
     .pl_clk_req(vif.pl_clk_req), .lp_clk_ack(vif.lp_clk_ack),
     .lp_wake_req(vif.lp_wake_req), .pl_wake_ack(vif.pl_wake_ack),
+    // Management: PIPE control request
+    .req_valid(vif.req_valid), .req_kind(vif.req_kind),
+    .req_power_down(vif.req_power_down), .req_rate(vif.req_rate),
+    .req_width(vif.req_width), .req_rxwidth(vif.req_rxwidth),
+    .busy(vif.busy), .done(vif.done), .req_error(vif.req_error),
+    // Management: message-bus request
+    .mb_req_valid(vif.mb_req_valid), .mb_req_write(vif.mb_req_write),
+    .mb_req_committed(vif.mb_req_committed), .mb_req_addr(vif.mb_req_addr),
+    .mb_req_wdata(vif.mb_req_wdata), .mb_req_ready(vif.mb_req_ready),
+    .mb_busy(vif.mb_busy), .mb_rsp_valid(vif.mb_rsp_valid),
+    .mb_rsp_is_read(vif.mb_rsp_is_read), .mb_rsp_rdata(vif.mb_rsp_rdata),
+    .mb_rsp_error(vif.mb_rsp_error),
     // PIPE MAC -> PHY
-    .tx_data(vif.tx_data), .tx_data_k(vif.tx_data_k), .tx_data_valid(vif.tx_data_valid),
+    .tx_data(vif.tx_data), .tx_data_valid(vif.tx_data_valid),
     .rate(vif.rate), .power_down(vif.power_down), .width(vif.width),
     .rx_width(vif.rx_width), .tx_detect_rx(vif.tx_detect_rx),
     .tx_elec_idle(vif.tx_elec_idle),
@@ -59,7 +71,10 @@ module tb_ucie2_pipe7;
     .rx_data(vif.rx_data), .rx_valid(vif.rx_valid), .phy_status(vif.phy_status),
     .rx_status(vif.rx_status), .rx_elec_idle(vif.rx_elec_idle),
     // PIPE message bus
-    .m2p_message_bus(vif.m2p_message_bus), .p2m_message_bus(vif.p2m_message_bus)
+    .m2p_message_bus(vif.m2p_message_bus), .p2m_message_bus(vif.p2m_message_bus),
+    // Bridge status
+    .block_locked(vif.block_locked), .sync_error(vif.sync_error),
+    .in_data_phase(vif.in_data_phase), .rx_overflow(vif.rx_overflow)
   );
 
   initial begin

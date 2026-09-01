@@ -12,7 +12,9 @@ TOPLEVEL_LANG ?= verilog
 SIM           ?= verilator
 
 RTL := $(abspath ../../rtl)
-VERILOG_SOURCES := $(RTL)/ucie2_pipe7_pkg.sv $(RTL)/ucie2_pipe7_bridge.sv
+# Package first, then every other rtl source (FDI front-end + datapath + top).
+VERILOG_SOURCES := $(RTL)/ucie2_pipe7_pkg.sv \
+                   $(filter-out $(RTL)/ucie2_pipe7_pkg.sv,$(wildcard $(RTL)/*.sv))
 TOPLEVEL := ucie2_pipe7_bridge
 MODULE   := test_smoke
 

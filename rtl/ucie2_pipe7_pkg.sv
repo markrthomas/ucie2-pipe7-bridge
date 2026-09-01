@@ -65,7 +65,9 @@ package ucie2_pipe7_pkg;
   parameter int unsigned PIPE_WIDTH_MAX = 160;     // consumed by Phase-B datapath
   parameter int unsigned BUFFER_DEPTH   = 16;      // CDC elastic-buffer entries
   /* verilator lint_on UNUSEDPARAM */
-  parameter int unsigned PIPE_WIDTH     = 80;      // shell default (a legal width)
+  // Default active PIPE width (a legal width). Named *_DEFAULT so it does not
+  // collide (VARHIDDEN) with the datapath modules' local PIPE_WIDTH parameter.
+  parameter int unsigned PIPE_WIDTH_DEFAULT = 80;
 
   // PowerDown[3:0] (Ref 643108 Table 6-5). 0..3 P-states; 4..15 PHY-specific.
   typedef enum logic [3:0] {
