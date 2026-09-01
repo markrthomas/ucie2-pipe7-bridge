@@ -63,9 +63,11 @@ module pipe7_rx_burst_fifo #(
             rd_ptr <= '0;
         end else begin
             if (accept >= 1) mem[wr_ptr]        <= din0;
-            // AW'(wr_ptr + 1) keeps the index in [0,DEPTH) via natural truncation.
-            // Correct because DEPTH is a power of 2 (asserted below).
-            if (accept >= 2) mem[AW'(wr_ptr + 1)] <= din1;
+            // AW'(1) casts both operands to AW bits before adding so Verilator
+            // does not warn about implicit 32-bit expansion of the integer literal.
+            // Natural AW-bit truncation = modulo DEPTH (valid because DEPTH is a
+            // power of 2 — see assertion above).
+            if (accept >= 2) mem[wr_ptr + AW'(1)] <= din1;
             wr_ptr <= wr_ptr + accept[AW-1:0];
             if (do_pop) rd_ptr <= rd_ptr + 1'b1;
             count  <= count + {{(AW-1){1'b0}}, accept} - (do_pop ? {{AW{1'b0}}, 1'b1} : '0);
