@@ -20,14 +20,17 @@ module tb_ucie2_pipe7;
   logic lclk = 0, pclk = 0;
   logic lclk_rst_n = 0, pclk_rst_n = 0;
 
-  // Independent clocks — the DUT crosses between them.
-  always #1.5 lclk = ~lclk;   // ~333 MHz
-  always #1.0 pclk = ~pclk;   // 500 MHz
+  // One 2 ns period on both domains (coincident edges) so the bridge is fully
+  // synchronous and the directed round-trip is deterministic / cross-sim stable,
+  // matching the PyUVM TB (dv/pyuvm/test_roundtrip.py).
+  always #1.0 lclk = ~lclk;
+  always #1.0 pclk = ~pclk;
 
-  // Reset sequencing: hold both low, release after a few cycles.
+  // Reset deasserts at 11 ns — a non-edge time (edges are at even ns) so both
+  // simulators agree on the first post-reset cycle.
   initial begin
     lclk_rst_n = 0; pclk_rst_n = 0;
-    #10;
+    #11;
     lclk_rst_n = 1; pclk_rst_n = 1;
   end
 
@@ -79,6 +82,6 @@ module tb_ucie2_pipe7;
 
   initial begin
     uvm_config_db#(virtual ucie2_pipe7_if)::set(null, "*", "vif", vif);
-    run_test("ucie2_smoke_test");
+    run_test("ucie2_roundtrip_test");
   end
 endmodule : tb_ucie2_pipe7

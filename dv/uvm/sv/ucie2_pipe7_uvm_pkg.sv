@@ -1,25 +1,35 @@
 // -----------------------------------------------------------------------------
-// ucie2_pipe7_uvm_pkg — SV UVM environment (SCAFFOLD, PLAN Item 13 seed).
+// ucie2_pipe7_uvm_pkg — SV UVM environment (PLAN B4).
 //
-// Today this holds one smoke test that resets the DUT, samples the boundary for
-// N PCLK cycles, and writes the canonical per-cycle trace (same column order as
-// dv/common/models/trace_format.py) so tools/trace_compare.py can prove the SV
-// UVM and PyUVM environments track cycle-for-cycle. Phase D replaces the body
-// with real agents/sequencer/monitor/scoreboard.
+// ucie2_roundtrip_test mirrors dv/pyuvm/test_roundtrip.py EXACTLY (same fixed
+// cycle schedule, same 2 ns single-period clocking, same PHY loopback) so the two
+// independently-authored TBs track cycle-for-cycle: it emits the canonical
+// per-cycle trace (tools/trace_compare.py checks it against the PyUVM trace) and
+// self-checks the round-trip (recovered FDI flits == driven, block_locked, no
+// sync_error). Signals are sampled #0.1 ns after each edge to read post-edge
+// (flop-updated) values, matching cocotb's RisingEdge semantics.
 //
-// The trace column order below MUST match trace_format.TRACE_COLUMNS.
+// The trace column order MUST match trace_format.TRACE_COLUMNS.
 // -----------------------------------------------------------------------------
 package ucie2_pipe7_uvm_pkg;
   import uvm_pkg::*;
   `include "uvm_macros.svh"
+  import ucie2_pipe7_pkg::*;
 
-  // Number of PCLK cycles the smoke traces (keep == PyUVM smoke N_CYCLES).
-  localparam int unsigned SMOKE_CYCLES = 64;
-
-  class ucie2_smoke_test extends uvm_test;
-    `uvm_component_utils(ucie2_smoke_test)
+  class ucie2_roundtrip_test extends uvm_test;
+    `uvm_component_utils(ucie2_roundtrip_test)
 
     virtual ucie2_pipe7_if vif;
+
+    localparam int unsigned N_FLITS      = 8;
+    localparam int unsigned BRINGUP_LCLK = 8;
+    localparam int unsigned RUN_PCLK     = 200;
+    localparam int unsigned PW           = PIPE_WIDTH_DEFAULT;
+    localparam int unsigned FDIW         = FDI_DW;
+
+    logic [FDIW-1:0] payloads  [N_FLITS];
+    logic [PW-1:0]   tx_words  [$];
+    logic [FDIW-1:0] recovered [$];
 
     function new(string name, uvm_component parent);
       super.new(name, parent);
@@ -31,16 +41,59 @@ package ucie2_pipe7_uvm_pkg;
         `uvm_fatal("NOVIF", "virtual interface 'vif' not set in config_db")
     endfunction
 
+    // PHY loopback: rx follows tx by one pclk.
+    task automatic loopback();
+      forever begin
+        @(posedge vif.pclk); #0.1;
+        vif.rx_data  = vif.tx_data;
+        vif.rx_valid = vif.tx_data_valid;
+      end
+    endtask
+
+    // Auto-complete the FDI stall handshake.
+    task automatic stall_ack();
+      forever begin
+        @(posedge vif.lclk); #0.1;
+        vif.lp_stallack = vif.pl_stallreq;
+      end
+    endtask
+
+    task automatic cap_tx();
+      forever begin
+        @(posedge vif.pclk); #0.1;
+        if (vif.tx_data_valid) tx_words.push_back(vif.tx_data);
+      end
+    endtask
+
+    task automatic cap_rx();
+      forever begin
+        @(posedge vif.lclk); #0.1;
+        if (vif.pl_valid) recovered.push_back(vif.pl_data);
+      end
+    endtask
+
+    // Fixed-schedule stimulus (anchored to reset deassert), matching the PyUVM TB.
+    task automatic stimulus();
+      vif.lp_state_req = FDI_ACTIVE;
+      repeat (BRINGUP_LCLK) @(posedge vif.lclk);
+      for (int i = 0; i < N_FLITS; i++) begin
+        #0.1;
+        vif.lp_data  = payloads[i];
+        vif.lp_valid = 1'b1;
+        vif.lp_irdy  = 1'b1;
+        @(posedge vif.lclk);
+      end
+      #0.1;
+      vif.lp_valid = 1'b0;
+      vif.lp_irdy  = 1'b0;
+    endtask
+
     task run_phase(uvm_phase phase);
       int fd;
       string path;
       phase.raise_objection(this);
 
-      if (!$value$plusargs("TRACE=%s", path)) path = "bridge.trace";
-      fd = $fopen(path, "w");
-      if (fd == 0) `uvm_fatal("TRACE", $sformatf("cannot open %s", path));
-
-      // Drive FDI/PIPE/management inputs to a defined idle and pulse both resets.
+      // Idle all inputs during reset.
       vif.lp_data = '0; vif.lp_valid = 0; vif.lp_irdy = 0;
       vif.lp_state_req = '0; vif.lp_linkerror = 0; vif.lp_stallack = 0;
       vif.lp_rx_active_req = 0; vif.lp_clk_ack = 0; vif.lp_wake_req = 0;
@@ -51,23 +104,51 @@ package ucie2_pipe7_uvm_pkg;
       vif.rx_data = '0; vif.rx_valid = 0; vif.phy_status = 0;
       vif.rx_status = '0; vif.rx_elec_idle = 0; vif.p2m_message_bus = '0;
 
-      // Header — must match trace_format.TRACE_HEADER.
+      foreach (payloads[i])
+        payloads[i] = (128'(16'h1000 + i) << 64) | 128'(32'hABCD0000 + i);
+
+      if (!$value$plusargs("TRACE=%s", path)) path = "bridge.trace";
+      fd = $fopen(path, "w");
+      if (fd == 0) `uvm_fatal("TRACE", $sformatf("cannot open %s", path));
+
+      // Everything starts at reset deassert, like the PyUVM coroutines.
+      wait (vif.pclk_rst_n === 1'b1);
+      fork
+        loopback();
+        stall_ack();
+        cap_tx();
+        cap_rx();
+        stimulus();
+      join_none
+
+      // Header — must match trace_format.TRACE_HEADER. %h auto-widths tx_data to
+      // PW/4 nibbles (== trace_format's PIPE_WIDTH//4 padding).
       $fwrite(fd,
         "cycle,pl_state_sts,pl_valid,pl_trdy,pl_stallreq,pl_flit_cancel,tx_data_valid,tx_data,rate,power_down\n");
-
-      // Wait for reset deassert (driven by the tb), then trace SMOKE_CYCLES.
-      // %h auto-zero-pads tx_data to its vector width (PW/4 nibbles), matching
-      // trace_format.format_row's PIPE_WIDTH//4 padding.
-      wait (vif.pclk_rst_n === 1'b1);
-      for (int cyc = 0; cyc < SMOKE_CYCLES; cyc++) begin
-        @(posedge vif.pclk);
+      for (int cyc = 0; cyc < RUN_PCLK; cyc++) begin
+        @(posedge vif.pclk); #0.1;
         $fwrite(fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d\n",
           cyc, vif.pl_state_sts, vif.pl_valid, vif.pl_trdy, vif.pl_stallreq,
           vif.pl_flit_cancel, vif.tx_data_valid, vif.tx_data, vif.rate, vif.power_down);
       end
       $fclose(fd);
-      `uvm_info("SMOKE", $sformatf("wrote %0d-cycle trace to %s", SMOKE_CYCLES, path),
-                UVM_LOW)
+
+      // ---- Self-checks: round-trip proves data flows ----
+      if (vif.sync_error !== 1'b0)
+        `uvm_error("RT", "deframer raised sync_error")
+      if (vif.block_locked !== 1'b1)
+        `uvm_error("RT", "deframer never reached block_locked")
+      if (recovered.size() < N_FLITS)
+        `uvm_error("RT", $sformatf("only %0d flits recovered (< %0d)",
+                                   recovered.size(), N_FLITS))
+      else
+        for (int i = 0; i < N_FLITS; i++)
+          if (recovered[i] !== payloads[i])
+            `uvm_error("RT", $sformatf("round-trip mismatch [%0d]: got %h exp %h",
+                                       i, recovered[i], payloads[i]))
+
+      `uvm_info("RT", $sformatf("roundtrip: %0d flits, tx %0d words, recovered %0d",
+                N_FLITS, tx_words.size(), recovered.size()), UVM_LOW)
 
       phase.drop_objection(this);
     endtask

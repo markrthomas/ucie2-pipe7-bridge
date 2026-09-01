@@ -16,7 +16,9 @@ RTL := $(abspath ../../rtl)
 VERILOG_SOURCES := $(RTL)/ucie2_pipe7_pkg.sv \
                    $(filter-out $(RTL)/ucie2_pipe7_pkg.sv,$(wildcard $(RTL)/*.sv))
 TOPLEVEL := ucie2_pipe7_bridge
-MODULE   := test_smoke
+# Default test: the directed Gen5 FDI round-trip (proves data flows + emits the
+# cycle-accurate trace). test_smoke.py remains for a quick idle bring-up check.
+MODULE   ?= test_roundtrip
 
 # Make the shared models importable from the test.
 export PYTHONPATH := $(abspath ../common/models):$(PYTHONPATH)

@@ -142,24 +142,32 @@ Makefile                  single entry point for every flow
   (shell + SV UVM if/tb/smoke + PyUVM smoke + trace columns) matches. FDI transfer
   = 128b, mapping 1:1 onto the internal `{is_os,data128}` block. 4 FLAGGED items
   (fdi_state encoding, is_os derivation, pl_flit_cancel, UCIe-2.0 mgmt mapping).
-- [ ] **1. Repo scaffold + env.** `Makefile`, `.devcontainer/` + Codespaces
-  prebuild, `Dockerfile`/`Dockerfile.dev`/`Dockerfile.ci`, `.railway/railway.ts`,
-  `docker/entrypoint.sh`, CI workflow skeletons (lint-only green first).
-- [ ] **2. `rtl/` package + top-level shell.** `pipe7_pkg.sv`-equivalent for 2.0;
-  bridge top with RDI + PIPE ports wired to empty submodule stubs; `make lint`
-  green (apt Verilator, strict `-Wall`).
+- [x] **1. Repo scaffold + env — DONE.** `Makefile`, `.devcontainer/` + Codespaces
+  prebuild, `Dockerfile`/`Dockerfile.dev`, `.railway/railway.ts`,
+  `docker/entrypoint.sh`, CI workflows (lint + uvm-verilator + cross-check).
+- [x] **2. `rtl/` package + top-level shell — DONE** (superseded by Item 0 freeze
+  + Phase B top).
 
 ### Phase B — datapath cores (FDI-native; mine predecessor blocks where shape matches)
-- [ ] **3. FDI flit TX/RX + FDI flow control** (credit/valid) **+ state-machine
-  handshake** (lp_state_req / pl_state_sts, stallreq/ack). Re-derived from the
-  predecessor's RDI ingress/egress, not ported verbatim.
-- [ ] **4. FDI-clock ↔ PCLK CDC elastic buffer** (predecessor's block reusable).
-- [ ] **5. Gen5 128b/130b TX framer + RX deframer (gearbox) + burst FIFO.**
-- [ ] **6. Gen6 PAM4 FLIT raw-wide datapath.**
-- [ ] **7. Rate-aware datapath mux + PIPE MAC control FSM** (PhyStatus-gated,
-  completion watchdog).
-- [ ] **8. Config/status: management/sideband bus-master + register file.**
-- [ ] **9. Integrated bridge top + bound SVA.**
+All delivered 2026-08-31 (commits B1–B4). Datapath blocks are drop-in from the
+predecessor (only the FDI front-end + top are new).
+- [x] **3. FDI TX/RX + link state-machine handshake** — `ucie2_fdi_ingress`/
+  `egress` (128b transfer = 1 block) + `ucie2_fdi_link_fsm` (minimal-functional:
+  lp_state_req/pl_state_sts stall handshake, rx_active/clk/wake, gates on ACTIVE).
+- [x] **4. FDI-clock ↔ PCLK CDC elastic buffer** — `pipe7_cdc_elastic_buf` (reused).
+- [x] **5. Gen5 128b/130b framer/deframer (gearbox) + burst FIFO** — reused.
+- [x] **6. Gen6 PAM4 raw-wide datapath** — `pipe7_gen6_datapath` (reused; Gen6 TX
+  drive path unexercised, mirrors predecessor — FLAGGED follow-up).
+- [x] **7. Rate-aware mux + PIPE MAC control FSM** — reused.
+- [x] **8. Config/status: msgbus master + register file** — reused; driven via the
+  new management ports.
+- [x] **9. Integrated bridge top + management ports** — `ucie2_pipe7_bridge`
+  composed; controller-side control/msgbus req + status outputs added. (Bound SVA
+  deferred to a follow-up.)
+- [x] **B4. Prove data flows** — directed Gen5 FDI round-trip in BOTH TBs (PHY
+  loopback, N=8 flits): PyUVM checks recovered==driven **and** TxData vs
+  `framing_model` bit-exact; SV UVM self-checks recovered==driven; both emit the
+  cycle-accurate trace for `trace_compare`.
 
 ### Phase C — DV tier 1: PyUVM (runs here)
 - [ ] **10. Shared golden model + vector generator** (`dv/common/`).
