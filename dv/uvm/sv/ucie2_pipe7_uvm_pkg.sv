@@ -111,8 +111,28 @@ package ucie2_pipe7_uvm_pkg;
       fd = $fopen(path, "w");
       if (fd == 0) `uvm_fatal("TRACE", $sformatf("cannot open %s", path));
 
+      // Header — must match trace_format.TRACE_HEADER. %h auto-widths tx_data to
+      // PW/4 nibbles (== trace_format's PIPE_WIDTH//4 padding).
+      $fwrite(fd,
+        "cycle,pl_state_sts,pl_valid,pl_trdy,pl_stallreq,pl_flit_cancel,tx_data_valid,tx_data,rate,power_down\n");
+
       // Everything starts at reset deassert, like the PyUVM coroutines.
       wait (vif.pclk_rst_n === 1'b1);
+
+      // Cycle 0 is sampled BEFORE the forked tasks start.  This matches
+      // cocotb start_soon semantics: cocotb does not run a start_soon task
+      // until the current coroutine's first await has fired, so PyUVM's
+      // cycle 0 always sees reset-state inputs (lp_state_req==FDI_RESET →
+      // pl_stallreq==0).  In SV, forked tasks run in the same delta cycle
+      // as the fork statement — stimulus() would immediately drive
+      // lp_state_req=FDI_ACTIVE, making pl_stallreq==1 at cycle 0 before
+      // the trace loop samples.  Recording cycle 0 here (before the fork)
+      // guarantees the same reset-state snapshot in both TBs.
+      @(posedge vif.pclk); #0.1;
+      $fwrite(fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d\n",
+        0, vif.pl_state_sts, vif.pl_valid, vif.pl_trdy, vif.pl_stallreq,
+        vif.pl_flit_cancel, vif.tx_data_valid, vif.tx_data, vif.rate, vif.power_down);
+
       fork
         loopback();
         stall_ack();
@@ -121,11 +141,7 @@ package ucie2_pipe7_uvm_pkg;
         stimulus();
       join_none
 
-      // Header — must match trace_format.TRACE_HEADER. %h auto-widths tx_data to
-      // PW/4 nibbles (== trace_format's PIPE_WIDTH//4 padding).
-      $fwrite(fd,
-        "cycle,pl_state_sts,pl_valid,pl_trdy,pl_stallreq,pl_flit_cancel,tx_data_valid,tx_data,rate,power_down\n");
-      for (int cyc = 0; cyc < RUN_PCLK; cyc++) begin
+      for (int cyc = 1; cyc < RUN_PCLK; cyc++) begin
         @(posedge vif.pclk); #0.1;
         $fwrite(fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d\n",
           cyc, vif.pl_state_sts, vif.pl_valid, vif.pl_trdy, vif.pl_stallreq,
