@@ -162,8 +162,13 @@ predecessor (only the FDI front-end + top are new).
 - [x] **8. Config/status: msgbus master + register file** — reused; driven via the
   new management ports.
 - [x] **9. Integrated bridge top + management ports** — `ucie2_pipe7_bridge`
-  composed; controller-side control/msgbus req + status outputs added. (Bound SVA
-  deferred to a follow-up.)
+  composed; controller-side control/msgbus req + status outputs added. Bound SVA
+  landed in Phase F increment 1: `dv/uvm/sv/ucie2_pipe7_sva.sv` binds a
+  logic-free checker onto the bridge boundary (TxDataValid vs TxElecIdle, block
+  lock / `sync_error`, the `pl_stallreq` handshake, `rx_overflow`). It is
+  elaborated by `make lint-uvm` and *checked* by the `--binary` `make uvm` run
+  (`--assert`); it is deliberately outside `rtl/`, so `make lint`/`pyuvm`/`fcov`
+  and the byte-identical trace are untouched.
 - [x] **B4. Prove data flows** — directed Gen5 FDI round-trip in BOTH TBs (PHY
   loopback, N=8 flits): PyUVM checks recovered==driven **and** TxData vs
   `framing_model` bit-exact; SV UVM self-checks recovered==driven; both emit the

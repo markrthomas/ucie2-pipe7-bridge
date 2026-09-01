@@ -33,16 +33,21 @@ TOP     := tb_ucie2_pipe7
 INCS := +incdir+$(SV) +incdir+$(UVM_HOME) +incdir+$(VLT_DIR)
 
 # Compile order: RTL package first, then all RTL (FDI front-end + datapath + top),
-# then UVM interface, UVM env package, tb top.
+# then the bound SVA checker, the UVM interface, UVM env package, tb top.
 RTL_SRCS := $(RTL)/ucie2_pipe7_pkg.sv \
             $(filter-out $(RTL)/ucie2_pipe7_pkg.sv,$(wildcard $(RTL)/*.sv))
 SRCS := $(RTL_SRCS) \
+        $(SV)/ucie2_pipe7_sva.sv \
         $(SV)/ucie2_pipe7_if.sv \
         $(SV)/ucie2_pipe7_uvm_pkg.sv \
         $(SV)/tb_ucie2_pipe7.sv
 
-LINTFLAGS ?= --lint-only --timing -Wno-fatal -Wno-TIMESCALEMOD
-VFLAGS    ?= --binary --timing --vpi -j $(BUILD_JOBS) --build-jobs $(BUILD_JOBS) \
+# --assert makes the bound SVA checker (ucie2_pipe7_sva.sv, Phase F increment 1)
+# a real runtime check in the --binary run, and elaborates it under lint. The
+# checker deliberately lives here and NOT under rtl/, so the root Makefile's
+# rtl/*.sv wildcard — and therefore `make lint`/`pyuvm`/`fcov` — is untouched.
+LINTFLAGS ?= --lint-only --timing --assert -Wno-fatal -Wno-TIMESCALEMOD
+VFLAGS    ?= --binary --timing --vpi --assert -j $(BUILD_JOBS) --build-jobs $(BUILD_JOBS) \
              -Wno-fatal -Wno-TIMESCALEMOD --CFLAGS "$(CFLAGS_MODEL)"
 UVM_PLUSARGS ?= +UVM_NO_RELNOTES
 
@@ -53,7 +58,8 @@ lint:
 	$(VERILATOR) $(LINTFLAGS) --top-module $(TOP) $(INCS) $(UVM_HDR) $(SRCS)
 	@echo "[lint-uvm] SV UVM env elaborates OK"
 
-# Full build + run — CI / Railway only. Fails on any UVM_ERROR/UVM_FATAL.
+# Full build + run — CI / Railway only. Fails on any UVM_ERROR/UVM_FATAL, and on
+# any `[SVA]` failure from the bound checker (ucie2_pipe7_sva.sv).
 run:
 	rm -rf $(OBJ)
 	mkdir -p $(OBJ)
@@ -64,6 +70,8 @@ run:
 	@grep -E "UVM_(INFO|WARNING|ERROR|FATAL) :" $(OBJ)/run.log || true
 	@if grep -qE "UVM_(ERROR|FATAL) :[[:space:]]*[1-9]" $(OBJ)/run.log; then \
 	  echo "FAIL: reported UVM_ERROR/UVM_FATAL"; exit 1; \
+	elif grep -qF "[SVA]" $(OBJ)/run.log; then \
+	  echo "FAIL: bound SVA assertion failure (see [SVA] lines above)"; exit 1; \
 	elif ! grep -qE "UVM_INFO :" $(OBJ)/run.log; then \
 	  echo "FAIL: no UVM report (crash before report_phase?)"; exit 1; \
 	else echo "PASS: clean UVM report (0 errors, 0 fatals)"; fi
