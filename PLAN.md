@@ -170,7 +170,11 @@ predecessor (only the FDI front-end + top are new).
   cycle-accurate trace for `trace_compare`.
 
 ### Phase C — DV tier 1: PyUVM (runs here)
-- [ ] **10. Shared golden model + vector generator** (`dv/common/`).
+- [x] **10. Shared golden model + vector generator** — `dv/common/models/`
+  (`framing_model`, `fdi_model`, `ctrl_plane_model`) + `dv/common/vectors/gen_vectors.py`
+  emitting a `$readmemh`-compatible `.vec` both TBs load. `ramp` profile reproduces the
+  B4 directed sequence bit-exactly; `random` is seeded/reproducible. Committed
+  `fdi_flits_ramp8.vec` (directed 8-flit).
 - [ ] **11. PyUVM env**: RDI agent, PIPE monitor, three-way scoreboard; per-cycle
   trace emitter. `make pyuvm` green under apt Verilator.
 - [ ] **12. Functional coverage** cross-check (cocotb_coverage under Icarus).
