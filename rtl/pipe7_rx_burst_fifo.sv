@@ -35,6 +35,12 @@ module pipe7_rx_burst_fifo #(
     output logic             overflow    // 1-cycle pulse: a burst did not fit (block dropped)
 );
     localparam int AW = $clog2(DEPTH);
+    // DEPTH must be a power of 2: wr_ptr arithmetic relies on natural truncation
+    // (AW bits) for correct modulo-DEPTH wrapping without a hardware divider.
+    initial begin
+        if (DEPTH < 3 || (DEPTH & (DEPTH - 1)) != 0)
+            $fatal(1, "pipe7_rx_burst_fifo: DEPTH=%0d must be >= 3 and a power of 2", DEPTH);
+    end
 
     logic [WIDTH-1:0] mem [DEPTH];
     logic [AW:0]      count;
@@ -56,8 +62,10 @@ module pipe7_rx_burst_fifo #(
             wr_ptr <= '0;
             rd_ptr <= '0;
         end else begin
-            if (accept >= 1) mem[wr_ptr]                 <= din0;
-            if (accept >= 2) mem[wr_ptr + 1'b1]          <= din1;
+            if (accept >= 1) mem[wr_ptr]        <= din0;
+            // AW'(wr_ptr + 1) keeps the index in [0,DEPTH) via natural truncation.
+            // Correct because DEPTH is a power of 2 (asserted below).
+            if (accept >= 2) mem[AW'(wr_ptr + 1)] <= din1;
             wr_ptr <= wr_ptr + accept[AW-1:0];
             if (do_pop) rd_ptr <= rd_ptr + 1'b1;
             count  <= count + {{(AW-1){1'b0}}, accept} - (do_pop ? {{AW{1'b0}}, 1'b1} : '0);

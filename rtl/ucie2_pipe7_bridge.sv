@@ -124,8 +124,10 @@ module ucie2_pipe7_bridge
   );
 
   // ================= PIPE control plane (pclk) =================
+  // fsm_tx_elec_idle is wired to a no-connect; the bridge muxes EI from busy+datapath
+  // (see tx_elec_idle assignment below).
   /* verilator lint_off UNUSEDSIGNAL */
-  wire [3:0] fsm_tx_elec_idle;   // FSM's EI output unused; the datapath owns EI
+  wire [3:0] fsm_tx_elec_idle;
   wire       rx_standby_nc, pclk_change_ack_nc;
   /* verilator lint_on UNUSEDSIGNAL */
   pipe7_mac_ctrl_fsm #(.PCLK_IS_PHY_INPUT(1'b0)) ctrl (
@@ -202,13 +204,22 @@ module ucie2_pipe7_bridge
   wire [MB_DATA_WIDTH-1:0] pam4_cfg_nc;
   /* verilator lint_on UNUSEDSIGNAL */
 
+  wire [3:0] dp_tx_elec_idle;
+  // TxElecIdle ownership: the datapath controls EI in the steady state.
+  // When the control FSM is busy (PowerDown/Rate/Width transition in flight) EI
+  // must be asserted regardless of the datapath phase.  Mux here so the FSM
+  // does not need a dedicated prep-state for PowerDown (busy already holds EI
+  // high for the full duration of every in-flight request, satisfying PIPE 7.1
+  // §8.4.1 for both Rate/Width and PowerDown transitions).
+  assign tx_elec_idle = busy ? 4'hF : dp_tx_elec_idle;
+
   pipe7_mac_datapath_ra #(.PIPE_WIDTH(PW)) datapath (
     .clk(pclk), .reset_n(pclk_rst_n),
     .rate, .power_down, .data_enable, .pam4_restricted_levels(pam4_levels),
     .g5_pl_cnt, .g5_pl_data0(txc_rd_data[BLOCK_PAYLOAD-1:0]), .g5_pl_is_os0(txc_rd_data[BLOCK_PAYLOAD]),
     .g5_pl_data1('0), .g5_pl_is_os1(1'b0), .g5_pl_acc,
     .g6_pl_valid(1'b0), .g6_pl_data('0), .g6_pl_ready(g6_pl_ready_nc),
-    .tx_data, .tx_data_valid, .tx_elec_idle,
+    .tx_data, .tx_data_valid, .tx_elec_idle(dp_tx_elec_idle),
     .rx_data, .rx_valid,
     .g5_rx_cnt, .g5_rx_data0, .g5_rx_os0, .g5_rx_data1, .g5_rx_os1,
     .g6_rx_valid, .g6_rx_data,
@@ -258,11 +269,13 @@ module ucie2_pipe7_bridge
     .pl_data, .pl_valid, .pl_flit_cancel
   );
 
-  // ================= RX overflow (registered pulse) =================
+  // rx_overflow: sticky error flag — set on any burst overflow, cleared only by
+  // reset.  A future management soft-clear write will be wired here once the
+  // regfile interface is complete.
   logic rx_overflow_q;
   always_ff @(posedge pclk or negedge pclk_rst_n) begin
-    if (!pclk_rst_n) rx_overflow_q <= 1'b0;
-    else             rx_overflow_q <= rxb_overflow;
+    if (!pclk_rst_n)      rx_overflow_q <= 1'b0;
+    else if (rxb_overflow) rx_overflow_q <= 1'b1;
   end
   assign rx_overflow = rx_overflow_q;
 
