@@ -41,12 +41,22 @@ package ucie2_pipe7_uvm_pkg;
         `uvm_fatal("NOVIF", "virtual interface 'vif' not set in config_db")
     endfunction
 
-    // PHY loopback: rx follows tx by one pclk.
+    // PHY loopback: rx follows tx by two pclk (matching cocotb VPI write latency).
+    // In SV a blocking write at posedge+#0.1 would be visible to the RTL at the
+    // next posedge (1-cycle delay). Python VPI writes have ~1 extra cycle of
+    // latency, making them visible 2 posedges after the write. Add one extra
+    // pclk cycle between sampling and driving so both TBs have the same 2-cycle
+    // loopback delay.
     task automatic loopback();
+      logic [PW-1:0] cap_data;
+      logic          cap_valid;
       forever begin
-        @(posedge vif.pclk); #0.1;
-        vif.rx_data  = vif.tx_data;
-        vif.rx_valid = vif.tx_data_valid;
+        @(posedge vif.pclk); #0.1;    // cycle N: sample tx outputs
+        cap_data  = vif.tx_data;
+        cap_valid = vif.tx_data_valid;
+        @(posedge vif.pclk); #0.1;    // cycle N+1: drive → visible to RTL at cycle N+2
+        vif.rx_data  = cap_data;
+        vif.rx_valid = cap_valid;
       end
     endtask
 
