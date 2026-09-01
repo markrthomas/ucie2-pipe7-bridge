@@ -1,0 +1,40 @@
+# Keep the build context to tracked source; local generated/leftover build
+# artifacts must never leak into an image (they carry host-absolute paths
+# from cocotb/Verilator runs and break `make pyuvm`/`make uvm` in-container).
+.git/
+
+# Verilator / build artifacts
+obj_dir/
+obj_dir_*/
+*.vcd
+*.fst
+
+# DV build/output
+dv/pyuvm/sim_build/
+dv/pyuvm/build/
+dv/pyuvm/results.xml
+dv/uvm/vlt/obj/
+dv/uvm/vcs/sim_*
+dv/uvm/vcs/*.log
+dv/uvm/vcs/csrc/
+dv/uvm/vcs/simv.daidir/
+*.trace
+
+# Reports
+report/
+
+# Python
+__pycache__/
+*.pyc
+
+# Formal (SymbiYosys)
+verification/formal/*_bmc/
+verification/formal/*_cover/
+
+# Node (only used transiently for `railway config plan/apply`)
+node_modules/
+package-lock.json
+
+# Local notes / editor
+NOTES
+.mcp.json
