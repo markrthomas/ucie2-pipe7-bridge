@@ -30,6 +30,7 @@
 #   Usage:  tools/railway_swarm.sh [MODE]   (MODE = probe|gate|agents)
 #   Env:    N=8  REF=<git sha/branch>  SWARM_TEMPLATE=uvm
 #           SWARM_APPLY=1  SEEDS="1 2 3 4"  TESTS="roundtrip"  IDLE_MIN=30
+#           SWARM_MODEL=<model id>  (agents; default Haiku 4.5, the cheap tier)
 # =============================================================================
 set -euo pipefail
 
@@ -43,6 +44,9 @@ IDLE_MIN="${IDLE_MIN:-30}"                        # auto-destroy idle sandboxes
 SEEDS="${SEEDS:-1 2 3 4 5 6 7 8}"
 TESTS="${TESTS:-roundtrip}"
 APPLY="${SWARM_APPLY:-0}"
+# Model the AI-dev agents run on. Default to the small/cheap/efficient tier
+# (Haiku 4.5) to keep the swarm inexpensive; override with SWARM_MODEL=.
+SWARM_MODEL="${SWARM_MODEL:-claude-haiku-4-5-20251001}"
 
 # Project/environment selection: prefer explicit flags, else the linked project.
 PROJ_FLAGS=()
@@ -187,11 +191,12 @@ launch_agents() {
     i=$((i+1)); [ "$i" -gt "$N" ] && break
     local slice="${entry%%|*}" task="${entry#*|}"
     local name="uvm-slice-${slice}"
-    say "agent $i -> $name"
+    say "agent $i -> $name (model=$SWARM_MODEL)"
     # --claude uses CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY if set (headless),
     # else mints a token interactively. AGENT_ARGS after `--` go to Claude Code.
+    # ANTHROPIC_MODEL / ANTHROPIC_SMALL_FAST_MODEL pin the (cheap) model in-VM.
     run ca start "${PROJ_FLAGS[@]}" --claude --new --name "$name" \
-        --variable "SWARM_SLICE=$slice,SWARM_REF=$REF" \
+        --variable "SWARM_SLICE=$slice,SWARM_REF=$REF,ANTHROPIC_MODEL=$SWARM_MODEL,ANTHROPIC_SMALL_FAST_MODEL=$SWARM_MODEL" \
         -- -p "$task Reference: docs/phase_d_swarm.md and dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv. Check elaboration in-VM with 'make -C dv/uvm/vlt lint' (fits 4 GB), then push a branch — CI runs the authoritative --binary + trace_compare (heavy build does not fit the 4 GB VM)."
   done
 }

@@ -64,7 +64,15 @@ touches nothing; set `SWARM_APPLY=1` to provision (spends money).
 | `agents` | a `railway ca --claude` cloud VM (Claude Code) that authors one env slice, `lint-uvm`-checks it in-VM, then pushes → CI validates `--binary` | `make railway-swarm-agents` |
 
 Knobs (env-style): `N=`, `SEEDS=`, `TESTS=`, `REF=`, `SWARM_TEMPLATE=`,
-`SWARM_APPLY=1`. Example: `N=4 SEEDS="1 2 3 4" SWARM_APPLY=1 make railway-swarm`.
+`SWARM_APPLY=1`, and `SWARM_MODEL=` (agents mode). Example:
+`N=4 SEEDS="1 2 3 4" SWARM_APPLY=1 make railway-swarm`.
+
+**AI-dev agent model:** `agents` mode pins the in-VM Claude Code model via
+`ANTHROPIC_MODEL` + `ANTHROPIC_SMALL_FAST_MODEL`, defaulting to the cheap/compact
+tier **Haiku 4.5** (`claude-haiku-4-5-20251001`) to keep the swarm inexpensive.
+Override per run with `SWARM_MODEL=<id>` (e.g. `claude-sonnet-5` for the trickier
+trace-emitter integration). Note: the byte-identical-trace restructure is a
+demanding task — a small model may need more iterations; CI is the backstop.
 
 **Validated 2026-09-01:** `make railway-template` built the `uvm` template, and a
 real `N=1 SWARM_APPLY=1 make railway-swarm` fire booted a 4 GB sandbox from it,
