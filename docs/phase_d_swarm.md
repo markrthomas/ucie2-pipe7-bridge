@@ -66,6 +66,12 @@ touches nothing; set `SWARM_APPLY=1` to provision (spends money).
 Knobs (env-style): `N=`, `SEEDS=`, `TESTS=`, `REF=`, `SWARM_TEMPLATE=`,
 `SWARM_APPLY=1`. Example: `N=4 SEEDS="1 2 3 4" SWARM_APPLY=1 make railway-swarm`.
 
+**Validated 2026-09-01:** `make railway-template` built the `uvm` template, and a
+real `N=1 SWARM_APPLY=1 make railway-swarm` fire booted a 4 GB sandbox from it,
+cloned the ref, and ran `make lint` (RTL OK, Verilator 5.032) + `make fcov`
+(iverilog 12.0, cocotb 1.9.2, **bins=39/39 = 100.0%**), then self-destroyed.
+Sandbox lifecycle (create→exec→destroy, JSON id-capture) all confirmed live.
+
 **Fire prereqs:** `railway login` (done: markt) **and** `railway link` (or
 `RAILWAY_PROJECT`/`RAILWAY_ENVIRONMENT`, or `RAILWAY_TOKEN` in CI). `agents` mode
 also needs `CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_API_KEY` for headless Claude.

@@ -90,7 +90,8 @@ gate_cmd() {
   local test="$1" seed="$2"
   cat <<EOF
 set -euo pipefail
-git clone --depth 50 "$REPO_URL" work && cd work && git checkout "$REF"
+git clone --depth 50 --quiet "$REPO_URL" work && cd work
+git -c advice.detachedHead=false checkout --quiet "$REF"
 # Light tiers that fit a 4 GB sandbox on the apt-toolchain template ('$SWARM_TEMPLATE'):
 # RTL strict lint (apt verilator) + independent functional coverage (iverilog).
 # Heavy --binary UVM + trace_compare stay in CI (uvm-verilator.yml).
