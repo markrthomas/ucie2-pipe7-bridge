@@ -1,23 +1,24 @@
-Finalize the ucie2-pipe7-bridge DV work and keep the gate green.
+Implement **increment 1** of `docs/phase_f_env_enhancements.md` (bound SVA), and
+nothing beyond it.
 
-1. Run and review every runnable DV tier by dispatching one dv-env-tester each,
-   in parallel (respect HOST CAPACITY): `lint`, `fcov`, and — where the toolchain
-   is present — `pyuvm` and `uvm` (elaborate-only).
-2. For any tier that fails, make the minimal fix in the RTL/TB and re-test that
-   tier until it is green.
-3. Have the infra-agent confirm the Docker image builds and the CI / Railway /
-   prebuild config is sound; apply any minimal infra fix.
-4. Run the local gate yourself: `make lint && make fcov FCOV_SIM=icarus` (and
-   `make pyuvm`, `make lint-uvm …` where those tools are present) and confirm the
-   banners.
-5. If — and only if — the gate is green, create a `swarm/…` branch, commit your
-   changes (with the co-author + session trailers), push, and open a PR. A human
-   merges; CI (uvm-verilator.yml) validates the authoritative `--binary` UVM +
-   byte-identical `trace_compare` on the PR.
-6. Report a concise summary: per-tier results, the fixes you made (file:line), the
-   gate result, and the PR URL.
+1. Read `docs/phase_f_env_enhancements.md` in full — honor its Hard invariants
+   (the byte-identical cross-check is sacred; new tiers are additive/behind their
+   own make target; no OSS CAD Suite) — then build **increment 1 only**: a
+   bind-based SVA module on the `ucie2_pipe7_bridge` boundary asserting the safe
+   always-true properties listed there. No RTL logic edits — assertions + a bind.
+2. Verify locally what this host can: dispatch dv-env-testers for `lint` and
+   (if a UVM Verilator is present) `uvm` (elaborate); run `make lint` and
+   `make lint-uvm …` yourself. Confirm `[lint] RTL OK` and
+   `[lint-uvm] SV UVM env elaborates OK`. Have the infra-agent confirm CI still
+   installs/loads the SVA sources.
+3. Do NOT change the trace emitters, the fixed clock/reset/stimulus schedule, or
+   any existing gate target. The authoritative `--binary` UVM run (which now also
+   checks the assertions) + byte-identical `trace_compare` run in CI on your PR.
+4. Branch `swarm/phaseF-bound-sva`, commit (co-author + Claude-Session trailers),
+   push, and open a PR titled for increment 1. A human merges. Increments 2–4 are
+   separate later runs — do not start them.
+5. Report: what you added (file:line), the local banners, and the PR URL.
 
-Do not push to or commit on main. Do not perturb the per-cycle trace emitters or
-the fixed clock/reset/stimulus schedule (the cross-check must stay byte-identical).
-Make the smallest change that fixes each problem; if a fix is risky or ambiguous,
-report it for a human instead of guessing.
+Never commit on main. Make the smallest change that satisfies increment 1; if a
+property is ambiguous or would need an RTL change, report it for a human instead
+of guessing.
