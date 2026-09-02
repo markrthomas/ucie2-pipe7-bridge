@@ -36,6 +36,7 @@ flowchart LR
 | `rtl/` | SystemVerilog RTL (bridge top + package) |
 | `dv/pyuvm/` | PyUVM-on-cocotb tier (runs locally + CI) |
 | `dv/uvm/{sv,vlt,vcs}/` | SV UVM env, Verilator `--binary` flow, VCS mirror |
+| `dv/uvm/sv/ucie2_pipe7_sva.sv` | bound SVA checker on the bridge boundary (see below) |
 | `dv/common/models/` | shared golden model + trace-format contract |
 | `tools/trace_compare.py` | cycle-accurate PyUVM-vs-UVM trace diff |
 | `docs/` | spec cross-check, verification plan |
@@ -59,6 +60,26 @@ The heavy gates run in **CI / the Railway container**, not locally:
 make uvm            # full SV UVM --binary build + run   (CI/Railway)
 make trace-compare  # cycle-accurate cross-check          (CI/Railway)
 ```
+
+## Bound assertions (SVA)
+
+`dv/uvm/sv/ucie2_pipe7_sva.sv` is a logic-free checker module `bind`-ed onto every
+`ucie2_pipe7_bridge` instance — **no RTL edits**. It asserts, per cycle:
+
+| Assertion | Property |
+|-----------|----------|
+| `a_no_tx_while_elec_idle` | `tx_data_valid` is never high while `tx_elec_idle` is asserted (qualified `!busy`) |
+| `a_lock_is_sticky` | `block_locked` never drops without `sync_error` |
+| `a_no_sync_error_once_locked` | no `sync_error` in steady state once `block_locked` |
+| `a_stallreq_held_until_ack` | `pl_stallreq` is held until `lp_stallack` (or `lp_linkerror`) |
+| `a_state_change_handshaked` | `pl_state_sts` only changes via a completed stall handshake |
+| `a_no_rx_overflow` | `rx_overflow` never asserts in the directed round-trip |
+
+It rides the existing SV UVM flow: `make lint-uvm` elaborates it and the CI/Railway
+`make uvm` (`--binary`) **checks** it — `dv/uvm/vlt/Makefile` passes `--assert` and
+fails the run on any `[SVA]` line in `obj/run.log`. It is intentionally **not** in
+`rtl/`, so the root `make lint`, `make pyuvm` and `make fcov` source lists (which
+glob `rtl/*.sv`) and the byte-identical cross-check trace are unaffected.
 
 ## Toolchain policy
 
