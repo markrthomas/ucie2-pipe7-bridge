@@ -39,6 +39,7 @@ flowchart LR
 | `dv/uvm/sv/ucie2_pipe7_sva.sv` | bound SVA checker on the bridge boundary (see below) |
 | `dv/common/models/` | shared golden model + trace-format contract |
 | `tools/trace_compare.py` | cycle-accurate PyUVM-vs-UVM trace diff |
+| `tools/coverage_report.py` | `make coverage` line-coverage report (`[COV] line=NN.N%`) |
 | `docs/` | spec cross-check, verification plan |
 | `.devcontainer/`, `Dockerfile*`, `.railway/` | Codespaces, containers, Railway |
 
@@ -60,6 +61,37 @@ The heavy gates run in **CI / the Railway container**, not locally:
 make uvm            # full SV UVM --binary build + run   (CI/Railway)
 make trace-compare  # cycle-accurate cross-check          (CI/Railway)
 ```
+
+## Line coverage (advisory)
+
+```bash
+make coverage        # [COV] line=NN.N%  -> build/coverage/{coverage.txt,annotated/}
+make coverage COV_MIN=80   # same, but fail below the floor (not enabled yet)
+```
+
+`make coverage` re-runs the **directed FDI round-trip** (`dv/pyuvm/test_roundtrip`)
+in a *separate* Verilator `--coverage-line` build dir (`dv/pyuvm/cov_build`,
+switched on only by `RTL_COVERAGE=1`) and scores it with `tools/coverage_report.py`:
+per-instance points are merged by `(file, line)`, only `rtl/` sources count, and
+branch points are reported separately (never part of the `line=` number).
+
+It is **additive and outside the gate** — it is not run by `lint`/`pyuvm`/`fcov`/
+`uvm`/`trace-compare`, and in CI it is a post-gate step in `uvm-verilator.yml`
+(after `trace-compare`, `continue-on-error: true`), so it can never perturb the
+byte-identical cross-check.
+
+Measured baseline: **`[COV] line=63.3%` (38/60 RTL lines)**. The uncovered lines
+are concentrated in `pipe7_msgbus_master.sv` and `pipe7_mac_ctrl_fsm.sv`, which
+the loopback round-trip does not drive (the `make fcov` tier sweeps those). The
+floor is **advisory (report only)** for now; a `>= NN%` gate is set via `COV_MIN`
+once the baseline is agreed — deliberately *not* enabled in this change.
+
+> If a cocotb build here dies with `ModuleNotFoundError: No module named
+> 'encodings'`, that is a host quirk unrelated to this repo: cocotb exports
+> `PYTHONHOME` for its embedded interpreter, which breaks the `/usr/bin/python3`
+> that Verilator's `verilated.mk` hardcodes when the two are different versions.
+> Work around it with `make pyuvm PYTHON3="$(command -v python3)"` (same for
+> `make coverage`).
 
 ## Bound assertions (SVA)
 

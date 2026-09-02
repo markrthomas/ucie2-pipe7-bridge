@@ -6,8 +6,13 @@ obj_dir_*/
 
 # DV build/output
 dv/pyuvm/sim_build/
+dv/pyuvm/cov_build/
 dv/pyuvm/build/
 dv/pyuvm/results.xml
+dv/pyuvm/coverage.dat
+
+# Coverage (make coverage)
+build/coverage/
 dv/uvm/vlt/obj/
 dv/uvm/vcs/sim_*
 dv/uvm/vcs/*.log

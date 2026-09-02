@@ -25,7 +25,7 @@ RTL_PKG   := $(RTL_DIR)/ucie2_pipe7_pkg.sv
 RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
-.PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare \
+.PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare coverage \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
         railway-swarm-agents swarm clean
 
@@ -43,6 +43,9 @@ help:
 	@echo "  make lint-uvm      elaborate-only lint of the SV UVM env       [local]"
 	@echo "  make uvm           full SV UVM --binary build+run              [CI/Railway]"
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
+	@echo "  make coverage      RTL line coverage of the directed round-trip [local; post-gate]"
+	@echo "                     (Verilator --coverage-line; prints [COV] line=NN.N%,"
+	@echo "                      advisory floor — set a gate with COV_MIN=NN)"
 	@echo "  make railway-prebuild  build the prebuilt verilator-uvm image  [Docker]"
 	@echo "  make railway-template  build the 4GB sandbox toolchain template [Railway]"
 	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
@@ -79,6 +82,33 @@ trace-compare:
 	$(PYTHON) tools/trace_compare.py \
 	  --pyuvm dv/pyuvm/build/bridge.trace \
 	  --uvm   dv/uvm/vlt/obj/bridge.trace
+
+# ---- RTL line coverage (Phase F increment 2) --------------------------------
+# ADDITIVE and OUTSIDE the gate: never run inside/alongside lint/pyuvm/fcov/uvm/
+# trace-compare, and never inside a timed DV run. It re-runs the SAME directed
+# FDI round-trip (dv/pyuvm test_roundtrip) in a SEPARATE, --coverage-line
+# instrumented build dir (dv/pyuvm/cov_build), so the gate's own build and the
+# byte-identical per-cycle trace are untouched. Verilator-only (needs
+# verilator_coverage); ~15 s.
+#
+# The floor is ADVISORY for now (report only). Once the baseline is agreed,
+# enforce it with `make coverage COV_MIN=NN` (and add COV_MIN to the CI step).
+COV_DIR            ?= build/coverage
+COV_MIN            ?=
+VERILATOR_COVERAGE ?= verilator_coverage
+
+coverage:
+	rm -f dv/pyuvm/coverage.dat dv/pyuvm/cov_build/coverage.dat
+	$(MAKE) -C dv/pyuvm RTL_COVERAGE=1 SIM=verilator
+	mkdir -p $(COV_DIR)
+	@if   [ -f dv/pyuvm/coverage.dat ];           then mv -f dv/pyuvm/coverage.dat           $(COV_DIR)/coverage.dat; \
+	 elif [ -f dv/pyuvm/cov_build/coverage.dat ]; then mv -f dv/pyuvm/cov_build/coverage.dat $(COV_DIR)/coverage.dat; \
+	 else echo "[COV] ERROR: the instrumented run produced no coverage.dat"; exit 1; fi
+	-$(VERILATOR_COVERAGE) --annotate $(COV_DIR)/annotated --annotate-min 1 \
+	  $(COV_DIR)/coverage.dat
+	$(PYTHON) tools/coverage_report.py $(COV_DIR)/coverage.dat \
+	  --rtl-dir $(RTL_DIR) --report $(COV_DIR)/coverage.txt \
+	  $(if $(COV_MIN),--min $(COV_MIN))
 
 # ---- Railway cloud swarm (CI/Railway have the RAM the local box lacks) -------
 # Prebuild the verilator-uvm toolchain image so swarm workers boot hot instead
@@ -134,4 +164,4 @@ SWARM_ENV   ?=
 clean:
 	-$(MAKE) -C dv/pyuvm clean
 	-$(MAKE) -C dv/uvm/vlt clean
-	rm -rf obj_dir report
+	rm -rf obj_dir report $(COV_DIR)

@@ -86,3 +86,30 @@ jobs:
             dv/uvm/vlt/obj/run.log
           retention-days: 7
           if-no-files-found: ignore
+
+      # Additive, advisory line-coverage report (Phase F increment 2). Runs the
+      # SAME from-source Verilator + cocotb/pyuvm already on PATH/installed above,
+      # in a separate instrumented build dir, so it cannot perturb the gate. Must
+      # run AFTER trace-compare: `make coverage` re-runs the pyuvm round-trip and
+      # rewrites dv/pyuvm/build/bridge.trace with identical content, so ordering
+      # it any earlier would just be redundant, not unsafe, but this keeps the
+      # cross-check unambiguously first. Non-gating: no COV_MIN.
+      - name: RTL line coverage (advisory, make coverage)
+        # ADVISORY: a hiccup in the instrumented build must never red the job
+        # that guards the --binary UVM run and the cross-check above it.
+        continue-on-error: true
+        run: |
+          make coverage \
+            VERILATOR="$VERILATOR_PREFIX/bin/verilator" \
+            VERILATOR_COVERAGE="$VERILATOR_PREFIX/bin/verilator_coverage"
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: line-coverage
+          path: |
+            build/coverage/coverage.txt
+            build/coverage/annotated
+          retention-days: 7
+          if-no-files-found: ignore
