@@ -99,7 +99,7 @@ VERILATOR_COVERAGE ?= verilator_coverage
 
 coverage:
 	rm -f dv/pyuvm/coverage.dat dv/pyuvm/cov_build/coverage.dat
-	$(MAKE) -C dv/pyuvm COVERAGE=1 SIM=verilator
+	$(MAKE) -C dv/pyuvm RTL_COVERAGE=1 SIM=verilator
 	mkdir -p $(COV_DIR)
 	@if   [ -f dv/pyuvm/coverage.dat ];           then mv -f dv/pyuvm/coverage.dat           $(COV_DIR)/coverage.dat; \
 	 elif [ -f dv/pyuvm/cov_build/coverage.dat ]; then mv -f dv/pyuvm/cov_build/coverage.dat $(COV_DIR)/coverage.dat; \

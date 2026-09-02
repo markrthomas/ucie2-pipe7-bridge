@@ -71,7 +71,7 @@ make coverage COV_MIN=80   # same, but fail below the floor (not enabled yet)
 
 `make coverage` re-runs the **directed FDI round-trip** (`dv/pyuvm/test_roundtrip`)
 in a *separate* Verilator `--coverage-line` build dir (`dv/pyuvm/cov_build`,
-switched on only by `COVERAGE=1`) and scores it with `tools/coverage_report.py`:
+switched on only by `RTL_COVERAGE=1`) and scores it with `tools/coverage_report.py`:
 per-instance points are merged by `(file, line)`, only `rtl/` sources count, and
 branch points are reported separately (never part of the `line=` number).
 

@@ -33,14 +33,17 @@ ifeq ($(SIM),icarus)
 endif
 
 # ---- Line-coverage build (Phase F increment 2) ------------------------------
-# INERT unless COVERAGE=1, so `make pyuvm` / `make fcov` build exactly as before.
+# INERT unless RTL_COVERAGE=1, so `make pyuvm`/`make fcov` build exactly as before.
+# (NOT named COVERAGE: make exports command-line variables, and cocotb 2.x reads
+# a COVERAGE env var as a request for *Python* coverage and aborts without the
+# `coverage` module — caught by the CI run of this target.)
 # `make coverage` at the repo root sets it. `--coverage-line` instruments line +
 # branch points only (no toggle/user); tools/coverage_report.py scores the line
 # points. cocotb's verilator main calls VerilatedCov::write() at end of sim,
 # which drops `coverage.dat` in this directory; the root `coverage` recipe moves
 # it into build/coverage/. A SEPARATE SIM_BUILD keeps the instrumented objects
 # out of the gate's sim_build, so the --coverage-free builds are untouched.
-ifeq ($(COVERAGE),1)
+ifeq ($(RTL_COVERAGE),1)
     SIM_BUILD  := $(abspath cov_build)
     EXTRA_ARGS += --coverage-line
 endif

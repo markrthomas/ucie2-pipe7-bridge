@@ -216,7 +216,7 @@ predecessor (only the FDI front-end + top are new).
 ### Phase F — hardening
 - [x] **F2. RTL line coverage (advisory)** — `make coverage` re-runs the directed
   FDI round-trip in a **separate** Verilator `--coverage-line` build
-  (`dv/pyuvm/cov_build`, enabled only by `COVERAGE=1`) and scores it with
+  (`dv/pyuvm/cov_build`, enabled only by `RTL_COVERAGE=1`) and scores it with
   `tools/coverage_report.py`, which merges per-instance points by `(file, line)`,
   counts **rtl/ only**, and prints `[COV] line=NN.N%` plus a per-file table into
   `build/coverage/`. Measured baseline: **63.3 % (38/60 RTL lines)** — the gaps

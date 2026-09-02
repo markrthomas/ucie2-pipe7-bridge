@@ -43,7 +43,7 @@ the baseline is known. Additive target + a CI step **after** the gate; never
 inside a timed DV run. Docs + `make help`.
 
 **LANDED.** `make coverage` (root `Makefile`) runs the directed round-trip in a
-separate `COVERAGE=1` build dir (`dv/pyuvm/cov_build`, `--coverage-line`) and
+separate `RTL_COVERAGE=1` build dir (`dv/pyuvm/cov_build`, `--coverage-line`) and
 scores it with `tools/coverage_report.py` → `build/coverage/`. Measured baseline
 on this RTL: **`[COV] line=63.3%` (38/60 rtl/ lines)**; branch points 34/45 =
 75.6% (informational). The floor stays **advisory** — `tools/coverage_report.py`
