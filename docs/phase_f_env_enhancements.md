@@ -65,6 +65,95 @@ tractable block or two (the Gen5 framer/deframer gearbox, the msgbus/ctrl FSM):
 prove the FLAGGED-safe properties (no illegal FSM state, gearbox sync legality).
 CI/Railway-only if heavy; document the tool install. `[FORMAL] … PASSED`.
 
+**LANDED.** `make formal` (root `Makefile` → `tools/formal_run.sh`) runs three
+**bounded** model checks (BMC — *not* an unbounded proof) with apt `yosys` 0.33 +
+SymbiYosys + `z3` 4.8.12. Measured on this host (~25 s total):
+
+```
+[FORMAL] pipe7_gearbox: BMC depth 12 PASSED
+[FORMAL] pipe7_mac_ctrl_fsm: BMC depth 24 PASSED
+[FORMAL] ucie2_fdi_link_fsm: BMC depth 24 PASSED
+[FORMAL] 3 job(s) PASSED (bounded model check -- not an unbounded proof)
+```
+
+Blocks and properties (all stated on the **port boundary** in `formal/*_formal.sv`
+wrappers — **no RTL edits**, and no hierarchical references, which the yosys
+frontend does not resolve):
+
+- **`ucie2_fdi_link_fsm`** — *no illegal FSM state*: `pl_state_sts` is always a
+  legal `fdi_state_e` (the FLAGGED encoding, cross-check §C) given legal
+  `lp_state_req`; `link_active ⇔ FDI_ACTIVE`; the state only moves on
+  `lp_linkerror` or a completed `pl_stallreq`/`lp_stallack` handshake;
+  `pl_stallreq` only rises on a genuinely different request; rx-active/wake/clk
+  mirrors are exact.
+- **`pipe7_mac_ctrl_fsm`** — *PIPE 7.1 §8.4.1 rate/width legality*: Rate / Width /
+  RxWidth only ever change out of a cycle that was busy, with TxElecIdle asserted
+  and PowerDown in P0/P1; PowerDown only moves out of an idle `REQ_POWER`;
+  `done`/`req_error` mutually exclusive; `done ⇒ !busy`; `busy` only rises on
+  `req_valid`; `PclkChangeAck` low unless `PCLK_IS_PHY_INPUT`, and then only after
+  `PclkChangeOk`. Both PCLK parameterizations proved at once.
+- **`pipe7_gearbox`** (`pipe7_tx_framer_gb` + `pipe7_rx_deframer_gb`) — *gearbox
+  sync legality*: the framer never over-accepts (`pl_acc ≤ pl_cnt`) and its
+  accumulator occupancy, re-derived from the observable interface, stays within
+  `[0, ACC_W]` (no overflow, no dropped bits); the deframer never reports an
+  illegal `pl_cnt`, **never passes a block with an illegal sync header upstream**
+  (`sync_error ⇒ pl_cnt == 0`), only errors from a locked state, always drops lock
+  on an error and always gains it on a delivered block.
+
+Each job was mutation-checked (a deliberately false variant of one property makes
+the job FAIL), so the assertions are live, not vacuous.
+
+Two implementation notes worth keeping:
+
+- `tools/formal_prep.py` writes a mechanically transformed **copy** of the RTL into
+  `build/formal/src/`: the apt yosys 0.33 Verilog frontend cannot parse
+  `import ucie2_pipe7_pkg::*;`, `return` inside a function, or an `int'()` cast, so
+  package identifiers are explicitly scoped and those two constructs rewritten.
+  `rtl/` is never touched, and nothing in the gate reads the copy.
+- The `.sby` engine is `smtbmc --unroll z3`. yosys-smtbmc's default non-unrolled
+  (uninterpreted-function) encoding is pathological for z3 4.8.12 — it does not
+  finish even at depth 2 — while the unrolled pure-bitvector encoding solves the
+  same query in seconds.
+
+Additive and outside the gate: `make formal` is a new target, reads no testbench,
+and writes only under `build/formal/`. The `Dockerfile` runtime stage carries apt
+`yosys` + `z3` + SymbiYosys (shallow clone, pure-Python `make install`) + `click`,
+and its fail-fast healthcheck now asserts all three. On a host without `sby` the
+target prints `[FORMAL] SKIP: …` and exits 0.
+
+### CI step — NOT YET APPLIED (needs a token with `workflows` scope)
+
+The swarm's GitHub App token cannot write `.github/workflows/**`
+(`refusing to allow a GitHub App to create or update workflow … without
+'workflows' permission`), so the post-gate CI step below was authored and
+verified but **left out of the PR**. A maintainer should apply it to
+`.github/workflows/uvm-verilator.yml`, inserting it **after** the
+"Upload traces + UVM log" step (i.e. after `trace-compare` and its artifact
+upload) and **before** the advisory "RTL line coverage" step:
+
+```yaml
+      # Additive formal tier (Phase F increment 3, SymbiYosys BMC). Strictly
+      # POST-GATE: placed after trace-compare and its artifact upload so it can
+      # never perturb lint/pyuvm/fcov/uvm/trace-compare. Reads no testbench and
+      # touches no rtl/dv file. z3 is already installed above; add yosys + the
+      # click module + SymbiYosys itself (shallow git clone, `make install` is
+      # a pure-Python copy -- no compile). NOT OSS CAD Suite. This must PASS.
+      - name: Install SymbiYosys formal tools (yosys, sby, click)
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y yosys
+          pip install --break-system-packages click
+          git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby
+          sudo make -C /tmp/sby install
+          rm -rf /tmp/sby
+
+      - name: Formal BMC (SymbiYosys, post-gate)
+        run: make formal
+```
+
+It must PASS, so it is deliberately **not** `continue-on-error` (unlike the
+advisory `make coverage` step) — but it stays strictly after the sacred gate.
+
 ## Increment 4 — metrics + dashboard
 
 Port the sibling's `docs/SWARM_PLAN.md` feature: committed SQLite

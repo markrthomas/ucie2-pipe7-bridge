@@ -13,6 +13,9 @@ dv/pyuvm/coverage.dat
 
 # Coverage (make coverage)
 build/coverage/
+
+# Formal (make formal) -- generated yosys-readable RTL copies + sby work dirs
+build/formal/
 dv/uvm/vlt/obj/
 dv/uvm/vcs/sim_*
 dv/uvm/vcs/*.log

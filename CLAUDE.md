@@ -44,6 +44,14 @@ CI/Railway additionally run the full `--binary` UVM build+run and the
 `trace_compare` cycle-accurate gate. Before claiming the UVM tier passes, say
 where it ran (CI/Railway) — it is not run locally.
 
+Two **post-gate, additive** tiers sit outside that gate and must never be folded
+into it: `make coverage` (advisory RTL line coverage, `[COV] line=NN.N%`) and
+`make formal` (SymbiYosys **bounded** model check, `[FORMAL] <job>: BMC depth N
+PASSED`). `make formal` uses apt `yosys` + SymbiYosys (YosysHQ/sby) + `z3` — still
+**not** OSS CAD Suite — and skips with exit 0 where those are absent. Its
+properties live in `formal/*_formal.sv` boundary wrappers; `rtl/` is never edited
+(see `README.md` → "Formal").
+
 ## Locked scope (decided 2026-08-31 — see PLAN §2)
 
 - **UCIe side: FDI** (Flit-Aware D2D Interface), UCIe 2.0. Not RDI — the

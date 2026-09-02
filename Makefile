@@ -25,7 +25,7 @@ RTL_PKG   := $(RTL_DIR)/ucie2_pipe7_pkg.sv
 RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
-.PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare coverage \
+.PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare coverage formal \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
         railway-swarm-agents swarm clean
 
@@ -46,6 +46,10 @@ help:
 	@echo "  make coverage      RTL line coverage of the directed round-trip [local; post-gate]"
 	@echo "                     (Verilator --coverage-line; prints [COV] line=NN.N%,"
 	@echo "                      advisory floor — set a gate with COV_MIN=NN)"
+	@echo "  make formal        SymbiYosys BMC of the FDI link FSM, the PIPE MAC  [local; post-gate]"
+	@echo "                     ctrl FSM and the Gen5 gearbox (apt yosys+sby+z3;"
+	@echo "                      prints [FORMAL] <job>: BMC depth N PASSED; skips"
+	@echo "                      cleanly with exit 0 if sby is not installed)"
 	@echo "  make railway-prebuild  build the prebuilt verilator-uvm image  [Docker]"
 	@echo "  make railway-template  build the 4GB sandbox toolchain template [Railway]"
 	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
@@ -110,6 +114,23 @@ coverage:
 	  --rtl-dir $(RTL_DIR) --report $(COV_DIR)/coverage.txt \
 	  $(if $(COV_MIN),--min $(COV_MIN))
 
+# ---- Formal / SymbiYosys BMC (Phase F increment 3) --------------------------
+# ADDITIVE and OUTSIDE the gate: never run inside/alongside lint/pyuvm/fcov/uvm/
+# trace-compare/coverage, reads no testbench, and writes only under build/formal/.
+# It BMCs three tractable blocks against boundary properties (see formal/*.sv):
+#   ucie2_fdi_link_fsm  -- no illegal FDI link state (the FLAGGED fdi_state_e
+#                          encodings), stall-handshake well-formedness;
+#   pipe7_mac_ctrl_fsm  -- PIPE 7.1 s8.4.1 rate/width legality, request/completion
+#                          handshake well-formedness;
+#   pipe7_gearbox       -- Gen5 128b/130b framer+deframer sync legality (no
+#                          accumulator overflow/underflow, no illegally-framed
+#                          block ever passed upstream).
+# Toolchain: apt yosys + SymbiYosys (YosysHQ/sby) + z3 -- NOT OSS CAD Suite.
+# Degrades gracefully: no sby on PATH => a skip message and exit 0.
+# Bounded, not unbounded: the banner reports "BMC depth N".
+formal:
+	bash tools/formal_run.sh $(FORMAL_JOBS)
+
 # ---- Railway cloud swarm (CI/Railway have the RAM the local box lacks) -------
 # Prebuild the verilator-uvm toolchain image so swarm workers boot hot instead
 # of building Verilator from source. `docker` here is podman-shim-friendly.
@@ -164,4 +185,4 @@ SWARM_ENV   ?=
 clean:
 	-$(MAKE) -C dv/pyuvm clean
 	-$(MAKE) -C dv/uvm/vlt clean
-	rm -rf obj_dir report $(COV_DIR)
+	rm -rf obj_dir report $(COV_DIR) build/formal

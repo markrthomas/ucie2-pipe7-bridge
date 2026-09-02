@@ -40,6 +40,8 @@ flowchart LR
 | `dv/common/models/` | shared golden model + trace-format contract |
 | `tools/trace_compare.py` | cycle-accurate PyUVM-vs-UVM trace diff |
 | `tools/coverage_report.py` | `make coverage` line-coverage report (`[COV] line=NN.N%`) |
+| `formal/` | SymbiYosys BMC wrappers + `.sby` jobs (`make formal`, see below) |
+| `tools/formal_run.sh`, `tools/formal_prep.py` | `make formal` driver + yosys-frontend source shim |
 | `docs/` | spec cross-check, verification plan |
 | `.devcontainer/`, `Dockerfile*`, `.railway/` | Codespaces, containers, Railway |
 
@@ -60,6 +62,13 @@ The heavy gates run in **CI / the Railway container**, not locally:
 ```bash
 make uvm            # full SV UVM --binary build + run   (CI/Railway)
 make trace-compare  # cycle-accurate cross-check          (CI/Railway)
+```
+
+Two post-gate, additive tiers round it out (never part of the gate):
+
+```bash
+make coverage       # [COV] line=NN.N%              (advisory RTL line coverage)
+make formal         # [FORMAL] <job>: BMC depth N PASSED   (SymbiYosys BMC)
 ```
 
 ## Line coverage (advisory)
@@ -92,6 +101,52 @@ once the baseline is agreed — deliberately *not* enabled in this change.
 > that Verilator's `verilated.mk` hardcodes when the two are different versions.
 > Work around it with `make pyuvm PYTHON3="$(command -v python3)"` (same for
 > `make coverage`).
+
+## Formal (SymbiYosys BMC, post-gate)
+
+```bash
+make formal                       # all jobs
+make formal FORMAL_JOBS=pipe7_gearbox   # one job
+```
+
+```
+[FORMAL] pipe7_gearbox: BMC depth 12 PASSED
+[FORMAL] pipe7_mac_ctrl_fsm: BMC depth 24 PASSED
+[FORMAL] ucie2_fdi_link_fsm: BMC depth 24 PASSED
+[FORMAL] 3 job(s) PASSED (bounded model check -- not an unbounded proof)
+```
+
+A **bounded** model check (BMC) of three tractable blocks, driven by
+**SymbiYosys** over apt `yosys` + `z3` — *not* OSS CAD Suite. Every DUT input is
+free, so each property holds for **all** input sequences up to the stated depth.
+This is **not** an unbounded proof: the banner reports `BMC depth N`, and nothing
+here is `k`-induction.
+
+The properties live in `formal/*_formal.sv` wrapper modules that only look at the
+DUT's **port boundary** — **no RTL is edited** (yosys' Verilog frontend does not
+resolve hierarchical references, so no internal signal is poked at either).
+
+| Job | Block(s) | Proved |
+|-----|----------|--------|
+| `ucie2_fdi_link_fsm` | `rtl/ucie2_fdi_link_fsm.sv` | **No illegal FSM state** — `pl_state_sts` is always a legal `fdi_state_e` (the FLAGGED encoding, cross-check §C) given legal `lp_state_req`; `link_active ⇔ FDI_ACTIVE`; state only moves via `lp_linkerror` or a completed `pl_stallreq`/`lp_stallack` handshake; `pl_stallreq` only rises on a genuinely different request; the rx-active/wake/clk mirrors are exact |
+| `pipe7_mac_ctrl_fsm` | `rtl/pipe7_mac_ctrl_fsm.sv` | **PIPE 7.1 §8.4.1 legality** — Rate/Width/RxWidth only ever change out of a cycle that was busy, with TxElecIdle asserted and PowerDown in P0/P1; PowerDown only moves out of an idle `REQ_POWER`; `done`/`req_error` mutually exclusive; `done ⇒ !busy`; `busy` only rises on `req_valid`; `PclkChangeAck` low unless `PCLK_IS_PHY_INPUT` and only after `PclkChangeOk`. Both PCLK parameterizations are proved at once |
+| `pipe7_gearbox` | `rtl/pipe7_tx_framer_gb.sv` + `rtl/pipe7_rx_deframer_gb.sv` | **Gen5 gearbox sync legality** — framer never over-accepts (`pl_acc ≤ pl_cnt`) and its accumulator occupancy, re-derived from the observable interface, stays in `[0, ACC_W]` (no overflow, no dropped bits); deframer never reports an illegal `pl_cnt`, never passes a block with an illegal sync header upstream (`sync_error ⇒ pl_cnt == 0`), only errors from a locked state, always drops lock on an error and always gains it on a delivered block |
+
+`make formal` is **additive and outside the gate** — it is never run by
+`lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`/`coverage`, it reads no testbench, and
+it writes only under `build/formal/`. It runs in the Railway container image
+(the `Dockerfile` runtime stage carries yosys + sby + z3 + click). The matching
+**post-gate** CI step for `uvm-verilator.yml` — placed after `trace-compare` and
+its artifact upload so it can never perturb the byte-identical cross-check — is
+written out in `docs/phase_f_env_enhancements.md` (increment 3) and still needs a
+maintainer with `workflows` token scope to apply it. On a host without the formal
+tools `make formal` prints a `[FORMAL] SKIP:` line and exits 0.
+
+> `tools/formal_prep.py` writes a mechanically transformed **copy** of the RTL
+> into `build/formal/src/` (the apt yosys 0.33 frontend cannot parse
+> `import ucie2_pipe7_pkg::*;`, `return` inside a function, or an `int'()` cast).
+> `rtl/` is never modified. The `.sby` engine is `smtbmc --unroll z3`: the default
+> non-unrolled encoding is pathological for z3 4.8.12 and does not finish.
 
 ## Bound assertions (SVA)
 

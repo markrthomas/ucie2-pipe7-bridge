@@ -1,0 +1,29 @@
+# SymbiYosys job -- Gen5 128b/130b gearbox pair (framer + deframer sync legality).
+# Phase F increment 3. Bounded model check (BMC), not an unbounded proof.
+# Run via `make formal` from the repo root (it regenerates build/formal/src first).
+#
+# `--unroll`: yosys-smtbmc's default non-unrolled (uninterpreted-function) encoding
+# is pathological for the apt z3 4.8.12; the unrolled pure-bitvector one is seconds.
+#
+# The depth is deliberately shallow here: the deframer's 470-bit accumulator is
+# shifted by a variable amount, so each unrolled step is a large barrel shifter.
+[options]
+mode bmc
+depth 12
+expect pass
+
+[engines]
+smtbmc --unroll z3
+
+[script]
+read -formal ucie2_pipe7_pkg.sv
+read -formal pipe7_tx_framer_gb.sv
+read -formal pipe7_rx_deframer_gb.sv
+read -formal pipe7_gearbox_formal.sv
+prep -top pipe7_gearbox_formal
+
+[files]
+build/formal/src/ucie2_pipe7_pkg.sv
+build/formal/src/pipe7_tx_framer_gb.sv
+build/formal/src/pipe7_rx_deframer_gb.sv
+formal/pipe7_gearbox_formal.sv

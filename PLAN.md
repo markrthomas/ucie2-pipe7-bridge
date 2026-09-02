@@ -226,9 +226,25 @@ predecessor (only the FDI front-end + top are new).
   `make coverage COV_MIN=NN` and add `COV_MIN` to the CI step. Additive and
   outside the gate: it runs as a post-gate step in `uvm-verilator.yml` (after
   `trace-compare`, `continue-on-error`), never inside a timed DV run.
+- [x] **F3. Formal (SymbiYosys BMC)** — `make formal` runs three **bounded** model
+  checks over apt `yosys` + SymbiYosys (YosysHQ/sby) + `z3` (**not** oss-cad-suite):
+  `ucie2_fdi_link_fsm` (**no illegal FSM state** — `pl_state_sts` is always a legal
+  `fdi_state_e`, the FLAGGED encoding of cross-check §C; plus stall-handshake
+  well-formedness), `pipe7_mac_ctrl_fsm` (**PIPE 7.1 §8.4.1 rate/width legality** —
+  Rate/Width only move out of a busy, TxElecIdle-asserted, P0/P1 cycle; both PCLK
+  parameterizations at once), and `pipe7_gearbox` (**Gen5 128b/130b gearbox sync
+  legality** — framer accumulator never overflows or underflows, deframer never
+  passes an illegally-framed block upstream). Measured:
+  `[FORMAL] pipe7_gearbox: BMC depth 12 PASSED`,
+  `[FORMAL] pipe7_mac_ctrl_fsm: BMC depth 24 PASSED`,
+  `[FORMAL] ucie2_fdi_link_fsm: BMC depth 24 PASSED` (~25 s total).
+  Properties live in `formal/*_formal.sv` **boundary** wrappers — no RTL edits, no
+  hierarchical references. **Bounded, not an unbounded proof.** Additive and
+  outside the gate: a post-gate step in `uvm-verilator.yml` after `trace-compare`,
+  also present in the Railway image; skips with exit 0 where `sby` is absent.
 - [ ] **21+. Coverage closure, randomized waveform suite, error-path directed
-  tests, overflow/accumulator guards, formal (SymbiYosys where a from-source
-  toolchain is available — not oss-cad-suite).** Enumerate once Phase E is green.
+  tests, overflow/accumulator guards, deeper/unbounded formal (k-induction on the
+  gearbox), metrics dashboard.** Enumerate once Phase E is green.
 
 ## 8. Per-commit green gate
 

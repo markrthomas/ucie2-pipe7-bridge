@@ -1,0 +1,24 @@
+# SymbiYosys job -- UCIe 2.0 FDI link state machine (no illegal FSM state).
+# Phase F increment 3. Bounded model check (BMC), not an unbounded proof.
+# Run via `make formal` from the repo root (it regenerates build/formal/src first).
+#
+# `--unroll`: yosys-smtbmc's default non-unrolled (uninterpreted-function) encoding
+# is pathological for the apt z3 4.8.12; the unrolled pure-bitvector one is seconds.
+[options]
+mode bmc
+depth 24
+expect pass
+
+[engines]
+smtbmc --unroll z3
+
+[script]
+read -formal ucie2_pipe7_pkg.sv
+read -formal ucie2_fdi_link_fsm.sv
+read -formal ucie2_fdi_link_fsm_formal.sv
+prep -top ucie2_fdi_link_fsm_formal
+
+[files]
+build/formal/src/ucie2_pipe7_pkg.sv
+build/formal/src/ucie2_fdi_link_fsm.sv
+formal/ucie2_fdi_link_fsm_formal.sv

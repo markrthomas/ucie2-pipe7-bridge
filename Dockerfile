@@ -42,9 +42,17 @@ ARG VERILATOR_PREFIX=/opt/verilator
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONIOENCODING=UTF-8 PYTHONUTF8=1
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      g++ make perl python3 ccache z3 \
+      g++ make perl python3 python3-pip ccache z3 yosys git \
       libgoogle-perftools-dev zlib1g zlib1g-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+# SymbiYosys (github.com/YosysHQ/sby) is pure Python -- `make install` just
+# copies sbysrc/*.py into place, so a shallow clone is fast (no compile). It
+# needs the `click` module at runtime. This is the formal tier (Phase F
+# increment 3, `make formal`); still NOT OSS CAD Suite.
+RUN pip3 install --break-system-packages --no-cache-dir click \
+    && git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby \
+    && make -C /tmp/sby install \
+    && rm -rf /tmp/sby
 COPY --from=verilator-build /opt/verilator /opt/verilator
 # Leave VERILATOR_ROOT unset (a stale value hard-errors the launcher, which
 # derives its root from its own path). The entrypoint unsets it defensively too.
@@ -61,6 +69,9 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 RUN "${VERILATOR}" --version \
     && test -f "${UVM_HOME}/uvm_pkg_all_v2020_3_1_dpi.svh" \
     && test -f "${UVM_HOME}/v2020_3_1/dpi/uvm_dpi.cc" \
-    && z3 --version
+    && z3 --version \
+    && yosys -V \
+    && sby --help >/dev/null \
+    && python3 -c "import click"
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD []
