@@ -15,7 +15,10 @@ implement **only the increment named in your task** (default: increment 1).
   or the fixed clock/reset/stimulus schedule.
 - **No OSS CAD Suite** in the reproducible envs (`.devcontainer`, `Dockerfile*`,
   CI). Use apt verilator/iverilog + the from-source UVM Verilator; for formal use
-  a from-source SymbiYosys/yosys, not oss-cad-suite.
+  apt yosys + SymbiYosys from YosysHQ/sby (pure-Python scripts, not a source
+  compile) + z3, not oss-cad-suite. (Original "from-source yosys" was relaxed to
+  apt yosys 2026-09-02 — the source compile blew the swarm's timed budget; apt
+  yosys is a distro package, still NOT oss-cad-suite.)
 - Pinned-tool paths, `[BANNER]` style, one clean commit per logical step, the
   `Co-Authored-By` + `Claude-Session` trailers. **Never commit on `main`** —
   branch `swarm/phaseF-<slug>`, push incrementally, open a PR (draft early), mark
@@ -57,7 +60,7 @@ after `trace-compare` and its artifact upload.
 
 ## Increment 3 — formal (SymbiYosys)
 
-`make formal` — SymbiYosys (from-source yosys+sby, NOT oss-cad-suite) BMC on a
+`make formal` — SymbiYosys (apt yosys + YosysHQ/sby + z3, NOT oss-cad-suite) BMC on a
 tractable block or two (the Gen5 framer/deframer gearbox, the msgbus/ctrl FSM):
 prove the FLAGGED-safe properties (no illegal FSM state, gearbox sync legality).
 CI/Railway-only if heavy; document the tool install. `[FORMAL] … PASSED`.

@@ -43,7 +43,7 @@ concurrency:
 jobs:
   swarm:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
         with:
@@ -71,6 +71,21 @@ jobs:
 
       - name: Install Claude Code CLI
         run: npm install -g @anthropic-ai/claude-code
+
+      # Formal tier (Phase F increment 3): apt yosys + SymbiYosys from YosysHQ/sby
+      # (pure Python scripts, seconds to install — NOT a source compile), z3 as the
+      # BMC solver. This is NOT OSS CAD Suite. Pre-installing here lets the swarm
+      # RUN `make formal` to self-verify instead of building a toolchain inside its
+      # timed budget (which is what timed out the from-source attempt).
+      - name: Install formal tools (apt yosys + SymbiYosys; NOT OSS CAD Suite)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends yosys z3
+          git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby
+          sudo make -C /tmp/sby install
+          yosys --version | head -1
+          sby --version || true
 
       - name: Run the DV swarm
         env:
