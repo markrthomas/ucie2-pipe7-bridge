@@ -214,6 +214,18 @@ predecessor (only the FDI front-end + top are new).
   predecessor + template.
 
 ### Phase F — hardening
+- [x] **F2. RTL line coverage (advisory)** — `make coverage` re-runs the directed
+  FDI round-trip in a **separate** Verilator `--coverage-line` build
+  (`dv/pyuvm/cov_build`, enabled only by `COVERAGE=1`) and scores it with
+  `tools/coverage_report.py`, which merges per-instance points by `(file, line)`,
+  counts **rtl/ only**, and prints `[COV] line=NN.N%` plus a per-file table into
+  `build/coverage/`. Measured baseline: **63.3 % (38/60 RTL lines)** — the gaps
+  are the msgbus master and the PIPE MAC control FSM, which the loopback
+  round-trip does not exercise (the `fcov` tier does). The floor is **advisory**
+  (report only); once the baseline is agreed, enforce it with
+  `make coverage COV_MIN=NN` and add `COV_MIN` to the CI step. Additive and
+  outside the gate: it runs as a post-gate step in `uvm-verilator.yml` (after
+  `trace-compare`, `continue-on-error`), never inside a timed DV run.
 - [ ] **21+. Coverage closure, randomized waveform suite, error-path directed
   tests, overflow/accumulator guards, formal (SymbiYosys where a from-source
   toolchain is available — not oss-cad-suite).** Enumerate once Phase E is green.

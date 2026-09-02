@@ -42,6 +42,19 @@ Start the floor **advisory** (report only), then set a threshold (e.g. ≥ 80%) 
 the baseline is known. Additive target + a CI step **after** the gate; never
 inside a timed DV run. Docs + `make help`.
 
+**LANDED.** `make coverage` (root `Makefile`) runs the directed round-trip in a
+separate `COVERAGE=1` build dir (`dv/pyuvm/cov_build`, `--coverage-line`) and
+scores it with `tools/coverage_report.py` → `build/coverage/`. Measured baseline
+on this RTL: **`[COV] line=63.3%` (38/60 rtl/ lines)**; branch points 34/45 =
+75.6% (informational). The floor stays **advisory** — `tools/coverage_report.py`
+exits 0 unless `--min` is given, and the target only passes it when `COV_MIN` is
+set (`make coverage COV_MIN=NN`). **A `>= NN%` gate is set in a follow-up once
+the baseline is agreed**; the sensible next step is coverage *closure* (the
+uncovered lines are the msgbus master and the PIPE MAC control FSM, which the
+loopback round-trip never drives), not just raising a number. CI: a post-gate,
+`continue-on-error` step at the end of `.github/workflows/uvm-verilator.yml`,
+after `trace-compare` and its artifact upload.
+
 ## Increment 3 — formal (SymbiYosys)
 
 `make formal` — SymbiYosys (from-source yosys+sby, NOT oss-cad-suite) BMC on a
