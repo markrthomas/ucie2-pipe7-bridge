@@ -26,7 +26,7 @@ RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
 .PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare coverage formal \
-        metrics dashboard \
+        metrics dashboard eda-playground eda-check \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
         railway-swarm-agents swarm clean
 
@@ -58,6 +58,10 @@ help:
 	@echo "  make dashboard     regenerate metrics/dashboard.html from the DB [local/CI; post-gate]"
 	@echo "                     (single self-contained file: inlined CSS +"
 	@echo "                      hand-drawn SVG, no CDN; prints [DASH] wrote …)"
+	@echo "  make eda-playground regenerate the EDA Playground bundle          [local; off-gate]"
+	@echo "                     (dv/uvm/eda_playground/: design.sv + testbench.sv"
+	@echo "                      + all-in-one; flattens the UVM pkg includes)"
+	@echo "  make eda-check     fail if the committed EDA bundle is stale       [local/CI; off-gate]"
 	@echo "  make railway-prebuild  build the prebuilt verilator-uvm image  [Docker]"
 	@echo "  make railway-template  build the 4GB sandbox toolchain template [Railway]"
 	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
@@ -166,6 +170,21 @@ metrics:
 
 dashboard:
 	$(PYTHON) tools/metrics_dashboard.py --db $(METRICS_DB) --out $(METRICS_HTML)
+
+# ---- EDA Playground bundle (Phase G increment 5) ----------------------------
+# ADDITIVE and OUTSIDE the gate. Concatenates the canonical rtl/ + dv/uvm/sv/
+# sources (in the vlt compile order) into paste-ready EDA Playground files under
+# dv/uvm/eda_playground/, flattening the UVM package's project `include lines so
+# the bundle needs no include search path. It reads the sources only — it never
+# edits rtl/dv, never touches the trace emitters, and is NOT the sacred gate
+# (EDA Playground cannot run tools/trace_compare.py). `eda-check` is a dev-only
+# drift-guard: it regenerates in memory and fails if the committed files are
+# stale. Stdlib Python only.
+eda-playground:
+	$(PYTHON) tools/gen_eda_playground.py
+
+eda-check:
+	$(PYTHON) tools/gen_eda_playground.py --check
 
 # ---- Railway cloud swarm (CI/Railway have the RAM the local box lacks) -------
 # Prebuild the verilator-uvm toolchain image so swarm workers boot hot instead

@@ -44,6 +44,17 @@ CI/Railway additionally run the full `--binary` UVM build+run and the
 `trace_compare` cycle-accurate gate. Before claiming the UVM tier passes, say
 where it ran (CI/Railway) — it is not run locally.
 
+The SV UVM env (`dv/uvm/sv/`) is laid out **UVM-Cookbook style — one class per
+file** under `{fdi_agent,pipe_agent,env,test}/`, pulled into the single package
+`ucie2_pipe7_uvm_pkg` via an ordered `` `include `` list. `test/
+ucie2_roundtrip_test.sv` is the **sacred per-cycle trace emitter** — its
+`run_phase` fork order/sampling is what keeps `trace_compare` byte-identical;
+never edit it structurally. `make eda-playground` regenerates a paste-ready EDA
+Playground bundle in `dv/uvm/eda_playground/` (off-gate; `make eda-check` guards
+drift). A local UVM-capable Verilator + `UVM_HOME` exist at
+`~/verilator{,/test_regress/t/uvm}`, so `make lint-uvm` **does** elaborate
+locally (unset `VERILATOR_ROOT`, which oss-cad-suite exports).
+
 Two **post-gate, additive** tiers sit outside that gate and must never be folded
 into it: `make coverage` (advisory RTL line coverage, `[COV] line=NN.N%`) and
 `make formal` (SymbiYosys **bounded** model check, `[FORMAL] <job>: BMC depth N

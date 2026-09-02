@@ -132,6 +132,15 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      # Additive EDA Playground drift-guard (Phase G increment 5). Pure-Python,
+      # no simulator: regenerates the bundle in memory and fails if the committed
+      # dv/uvm/eda_playground/ files are stale. ADVISORY + strictly POST-GATE, so
+      # it can never perturb the --binary UVM run or the byte-identical
+      # cross-check above it.
+      - name: EDA Playground bundle drift-guard (advisory, post-gate)
+        continue-on-error: true
+        run: make eda-check
+
       # Additive DV metrics + dashboard (Phase F increment 4). LAST step in the
       # job: strictly POST-GATE, after the --binary UVM run, trace-compare and
       # the coverage steps, so it can never perturb the byte-identical

@@ -5,6 +5,8 @@
 // driven flits (driver.drv_ap), the deframer must reach block_locked with no
 // sync_error, and at least N_FLITS must be recovered. TX word count is tracked
 // for the report. These are exactly the proven directed test's self-checks.
+// The `uvm_analysis_imp_decl macros must precede the class (they define the
+// _exp/_rx/_tx analysis-imp specializations it uses).
 // -----------------------------------------------------------------------------
 `uvm_analysis_imp_decl(_exp)
 `uvm_analysis_imp_decl(_rx)

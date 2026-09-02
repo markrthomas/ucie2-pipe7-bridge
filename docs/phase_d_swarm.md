@@ -130,15 +130,16 @@ catches syntax/structure first, locally or in a 4 GB agent VM.
 
 ## Slice decomposition (one `agents`-mode worker per slice)
 
-1. **FDI agent** — `dv/uvm/sv/agents/fdi_agent.svh`: `fdi_flit_item`,
+1. **FDI agent** — `dv/uvm/sv/fdi_agent/*` (Cookbook one-class-per-file; was
+   `agents/fdi_agent.svh`): `fdi_flit_item`,
    `fdi_sequencer`, `fdi_driver` (bringup: `lp_state_req=FDI_ACTIVE`; 8×`@lclk`;
    then one flit/lclk honoring the `stimulus()` timing), `fdi_rx_monitor`
    (`cap_rx`), and the `stall_ack` responder (sample N / drive N+1). Mirrors
    `dv/pyuvm/agents/fdi_agent.py`.
-2. **PIPE agent** — `dv/uvm/sv/agents/pipe_agent.svh`: `pipe_tx_monitor`
+2. **PIPE agent** — `dv/uvm/sv/pipe_agent/*` (was `agents/pipe_agent.svh`): `pipe_tx_monitor`
    (`cap_tx` + sync_error/block_locked) and `phy_loopback` (shadow register).
    Mirrors the PyUVM `PipeTxMonitor` + `loopback`.
-3. **scoreboard + seq_lib + env** — `dv/uvm/sv/{seq_lib,env}/*`: `fdi_flit_seq`
+3. **scoreboard + seq_lib + env** — `dv/uvm/sv/{fdi_agent,env,test}/*`: `fdi_flit_seq`
    (reads the shared `.vec`), `bridge_scoreboard` (recovered==driven + size +
    block_locked + no sync_error), `bridge_env` (wire agents + sb), thin
    `ucie2_roundtrip_test` (build env, run seq, own the trace emitter). Mirrors
