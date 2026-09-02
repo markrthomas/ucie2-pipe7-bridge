@@ -1,24 +1,34 @@
-Implement **increment 1** of `docs/phase_f_env_enhancements.md` (bound SVA), and
-nothing beyond it.
+Implement **increment 2** of `docs/phase_f_env_enhancements.md` (line-coverage
+gate), and nothing beyond it.
 
 1. Read `docs/phase_f_env_enhancements.md` in full — honor its Hard invariants
-   (the byte-identical cross-check is sacred; new tiers are additive/behind their
-   own make target; no OSS CAD Suite) — then build **increment 1 only**: a
-   bind-based SVA module on the `ucie2_pipe7_bridge` boundary asserting the safe
-   always-true properties listed there. No RTL logic edits — assertions + a bind.
-2. Verify locally what this host can: dispatch dv-env-testers for `lint` and
-   (if a UVM Verilator is present) `uvm` (elaborate); run `make lint` and
-   `make lint-uvm …` yourself. Confirm `[lint] RTL OK` and
-   `[lint-uvm] SV UVM env elaborates OK`. Have the infra-agent confirm CI still
-   installs/loads the SVA sources.
-3. Do NOT change the trace emitters, the fixed clock/reset/stimulus schedule, or
-   any existing gate target. The authoritative `--binary` UVM run (which now also
-   checks the assertions) + byte-identical `trace_compare` run in CI on your PR.
-4. Branch `swarm/phaseF-bound-sva`, commit (co-author + Claude-Session trailers),
-   push, and open a PR titled for increment 1. A human merges. Increments 2–4 are
-   separate later runs — do not start them.
-5. Report: what you added (file:line), the local banners, and the PR URL.
+   (the byte-identical cross-check is sacred; new tiers are additive, behind their
+   own make target, OUTSIDE the existing gate; no OSS CAD Suite) — then build
+   **increment 2 only**: a `make coverage` target that does a Verilator
+   `--coverage` build of the **directed round-trip** and emits a coverage report
+   plus an overall line-coverage %. Print a `[COV] line=NN.N%` banner. Keep the
+   floor **advisory** (report-only) for this PR; do not fail the build on a
+   threshold yet — note in docs that a `>= NN%` gate is set once the baseline is
+   known.
+2. Additive only. `make coverage` is a NEW target; it MUST NOT be folded into
+   `lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`, must not touch the trace emitters
+   (`dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv`, `dv/pyuvm/test_roundtrip.py`), the fixed
+   clock/reset/stimulus schedule, or any existing gate recipe. Do not perturb the
+   `--coverage`-free builds. If coverage needs its own obj dir, use a separate one.
+3. Verify locally what this host can: dispatch dv-env-testers for `lint` and
+   `pyuvm`; run `make lint` (expect `[lint] RTL OK`) and `make pyuvm` (expect the
+   RoundtripTest / 3-way cross-check PASS) yourself and confirm they are unchanged.
+   Run `make coverage` and capture the `[COV] line=NN.N%` banner it prints. Have
+   the infra-agent add a CI step that runs `make coverage` **after** the existing
+   gate (never inside a timed DV run) and confirm the workflow still loads.
+4. Document it: `README.md` / `PLAN.md` / `docs` + a `make help` line. Keep
+   measured-vs-target coverage numbers honest (report the real baseline %).
+5. Branch `swarm/phaseF-coverage-gate`, commit (co-author + Claude-Session
+   trailers), push, and open a PR titled for increment 2. A human merges.
+   Increments 3–4 are separate later runs — do not start them.
+6. Report: what you added (file:line), the `[COV]` baseline %, the local
+   `[lint]`/pyuvm banners (unchanged), and the PR URL.
 
-Never commit on main. Make the smallest change that satisfies increment 1; if a
-property is ambiguous or would need an RTL change, report it for a human instead
-of guessing.
+Never commit on main. Make the smallest change that satisfies increment 2; if the
+coverage build would require perturbing the sacred gate or the trace emitters,
+report it for a human instead of guessing.
