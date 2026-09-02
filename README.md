@@ -35,8 +35,11 @@ flowchart LR
 |------|------|
 | `rtl/` | SystemVerilog RTL (bridge top + package) |
 | `dv/pyuvm/` | PyUVM-on-cocotb tier (runs locally + CI) |
-| `dv/uvm/{sv,vlt,vcs}/` | SV UVM env, Verilator `--binary` flow, VCS mirror |
+| `dv/uvm/{sv,vlt,vcs}/` | SV UVM env (one class per file, Cookbook-style), Verilator `--binary` flow, VCS mirror |
+| `dv/uvm/sv/{fdi_agent,pipe_agent,env,test}/` | per-class UVM sources (agents, env, test) — see below |
 | `dv/uvm/sv/ucie2_pipe7_sva.sv` | bound SVA checker on the bridge boundary (see below) |
+| `dv/uvm/eda_playground/` | generated paste-ready EDA Playground bundle (`make eda-playground`) |
+| `tools/gen_eda_playground.py` | EDA Playground bundle generator + `make eda-check` drift-guard |
 | `dv/common/models/` | shared golden model + trace-format contract |
 | `tools/trace_compare.py` | cycle-accurate PyUVM-vs-UVM trace diff |
 | `tools/coverage_report.py` | `make coverage` line-coverage report (`[COV] line=NN.N%`) |
@@ -79,6 +82,47 @@ make formal         # [FORMAL] <job>: BMC depth N PASSED   (SymbiYosys BMC)
 make metrics        # [METRICS] row #N appended to metrics/metrics.db
 make dashboard      # [DASH] wrote metrics/dashboard.html
 ```
+
+## SV UVM env layout (Cookbook-style)
+
+The SV UVM env is written UVM-Cookbook style — **one class per file**, pulled
+into a single package (`dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv`) via ordered
+`` `include ``:
+
+```
+dv/uvm/sv/
+  ucie2_pipe7_if.sv          boundary interface (FROZEN Item-0 signal set)
+  ucie2_pipe7_sva.sv         bound SVA checker
+  ucie2_pipe7_uvm_pkg.sv     package: localparams + ordered `include list
+  tb_ucie2_pipe7.sv          top: clocks/reset, DUT + vif, run_test
+  fdi_agent/   fdi_flit_item · fdi_sequencer · fdi_seq_lib · fdi_driver · fdi_monitor · fdi_agent
+  pipe_agent/  pipe_monitor (tx) · phy_loopback · pipe_agent
+  env/         bridge_scoreboard · bridge_env
+  test/        ucie2_roundtrip_test   (the per-cycle trace emitter)
+```
+
+One package keeps every shared type (the `fdi_flit_item`, the package
+localparams, the virtual interface) in one compilation unit. `test/
+ucie2_roundtrip_test.sv` **is the sacred trace emitter**: its `run_phase` forks
+the component timing tasks in a fixed order so the emitted per-cycle trace stays
+byte-identical to the PyUVM tier and `tools/trace_compare.py` stays green — do
+not change its orchestration.
+
+## Run in EDA Playground
+
+`make eda-playground` bundles the DUT + UVM testbench into paste-ready files
+under `dv/uvm/eda_playground/` (a `design.sv` + `testbench.sv` pair for the two
+panes, plus a single all-in-one file), flattening the UVM package's project
+`` `include ``s so no include path is needed. See
+`dv/uvm/eda_playground/README.md` for the tool/UVM settings.
+
+```bash
+make eda-playground   # [EDA] wrote 3 files … to dv/uvm/eda_playground
+make eda-check        # fail if the committed bundle is stale (drift-guard)
+```
+
+This bundle is a **portability/demo artifact** — it is not part of the sacred
+gate and cannot run `trace_compare`; the byte-identical cross-check lives in CI.
 
 ## Line coverage (advisory)
 

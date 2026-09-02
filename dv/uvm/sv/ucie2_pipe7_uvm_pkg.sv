@@ -1,18 +1,25 @@
 // -----------------------------------------------------------------------------
 // ucie2_pipe7_uvm_pkg — SV UVM environment (PLAN item 13).
 //
-// A real multi-agent UVM env — fdi_agent (sequencer/driver/rx_monitor +
-// stall_ack), pipe_agent (tx_monitor + phy_loopback), bridge_scoreboard, seq_lib,
-// bridge_env — mirroring the PyUVM tier (dv/pyuvm/{agents,seq_lib,env}.py).
+// A real multi-agent UVM env laid out UVM-Cookbook style — one class per file,
+// pulled into this single package via ordered `include (the Cookbook's own
+// idiom). The tree under dv/uvm/sv/:
+//   fdi_agent/  fdi_flit_item, fdi_sequencer, fdi_seq_lib, fdi_driver,
+//               fdi_monitor, fdi_agent  (controller-facing agent + stall_ack)
+//   pipe_agent/ pipe_monitor (tx), phy_loopback, pipe_agent  (MAC/PHY-facing)
+//   env/        bridge_scoreboard, bridge_env
+//   test/       ucie2_roundtrip_test
+// mirroring the PyUVM tier (dv/pyuvm/{agents,seq_lib,env}.py).
 //
-// ucie2_roundtrip_test keeps the EXACT proven orchestration of the prior flat
-// test: single 2 ns clocking, reset-deassert wait, cycle 0 sampled BEFORE the
-// fork (matches cocotb start_soon), the same fork order, #0.1 post-edge sampling,
-// and the same trace columns/payloads. So the emitted per-cycle trace is
-// byte-identical and tools/trace_compare.py stays green. The component tasks are
-// forked here (not via auto run_phases) precisely to preserve that fork order.
+// ONE package keeps every shared type (fdi_flit_item, the localparams below, the
+// virtual interface) in one compilation unit, so the split is a pure textual
+// reorganization: same tokens, same order, same compilation unit -> the emitted
+// per-cycle trace is byte-identical and tools/trace_compare.py stays green. The
+// component timing tasks are forked by ucie2_roundtrip_test (not via auto
+// run_phases) precisely to preserve that fork order.
 //
-// Trace column order MUST match trace_format.TRACE_COLUMNS.
+// Include order respects type dependencies: item -> sequencer -> sequence ->
+// driver/monitor -> agent, both agents before env, env before test.
 // -----------------------------------------------------------------------------
 package ucie2_pipe7_uvm_pkg;
   import uvm_pkg::*;
@@ -25,84 +32,21 @@ package ucie2_pipe7_uvm_pkg;
   localparam int unsigned PW           = PIPE_WIDTH_DEFAULT;
   localparam int unsigned FDIW         = FDI_DW;
 
-  `include "seq_lib/fdi_seq_lib.svh"
-  `include "agents/fdi_agent.svh"
-  `include "agents/pipe_agent.svh"
-  `include "env/bridge_scoreboard.svh"
-  `include "env/bridge_env.svh"
+  // FDI controller-facing agent
+  `include "fdi_agent/fdi_flit_item.sv"
+  `include "fdi_agent/fdi_sequencer.sv"
+  `include "fdi_agent/fdi_seq_lib.sv"
+  `include "fdi_agent/fdi_driver.sv"
+  `include "fdi_agent/fdi_monitor.sv"
+  `include "fdi_agent/fdi_agent.sv"
+  // PIPE MAC/PHY-facing agent
+  `include "pipe_agent/pipe_monitor.sv"
+  `include "pipe_agent/phy_loopback.sv"
+  `include "pipe_agent/pipe_agent.sv"
+  // Environment
+  `include "env/bridge_scoreboard.sv"
+  `include "env/bridge_env.sv"
+  // Test (the sacred per-cycle trace emitter)
+  `include "test/ucie2_roundtrip_test.sv"
 
-  class ucie2_roundtrip_test extends uvm_test;
-    `uvm_component_utils(ucie2_roundtrip_test)
-
-    bridge_env             env;
-    virtual ucie2_pipe7_if vif;
-
-    function new(string name, uvm_component parent);
-      super.new(name, parent);
-    endfunction
-
-    function void build_phase(uvm_phase phase);
-      super.build_phase(phase);
-      if (!uvm_config_db#(virtual ucie2_pipe7_if)::get(this, "", "vif", vif))
-        `uvm_fatal("NOVIF", "virtual interface 'vif' not set in config_db")
-      env = bridge_env::type_id::create("env", this);
-    endfunction
-
-    task run_phase(uvm_phase phase);
-      int          fd;
-      string       path;
-      fdi_flit_seq seq;
-      phase.raise_objection(this);
-
-      // Idle all inputs during reset (identical to the proven directed test).
-      vif.lp_data = '0; vif.lp_valid = 0; vif.lp_irdy = 0;
-      vif.lp_state_req = '0; vif.lp_linkerror = 0; vif.lp_stallack = 0;
-      vif.lp_rx_active_req = 0; vif.lp_clk_ack = 0; vif.lp_wake_req = 0;
-      vif.req_valid = 0; vif.req_kind = '0; vif.req_power_down = '0;
-      vif.req_rate = '0; vif.req_width = '0; vif.req_rxwidth = '0;
-      vif.mb_req_valid = 0; vif.mb_req_write = 0; vif.mb_req_committed = 0;
-      vif.mb_req_addr = '0; vif.mb_req_wdata = '0;
-      vif.rx_data = '0; vif.rx_valid = 0; vif.phy_status = 0;
-      vif.rx_status = '0; vif.rx_elec_idle = 0; vif.p2m_message_bus = '0;
-
-      if (!$value$plusargs("TRACE=%s", path)) path = "bridge.trace";
-      fd = $fopen(path, "w");
-      if (fd == 0) `uvm_fatal("TRACE", $sformatf("cannot open %s", path));
-      $fwrite(fd,
-        "cycle,pl_state_sts,pl_valid,pl_trdy,pl_stallreq,pl_flit_cancel,tx_data_valid,tx_data,rate,power_down\n");
-
-      wait (vif.pclk_rst_n === 1'b1);
-
-      // Cycle 0 sampled BEFORE the forked tasks start (matches cocotb start_soon:
-      // cycle 0 sees reset-state inputs -> pl_stallreq==0).
-      @(posedge vif.pclk); #0.1;
-      $fwrite(fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d\n",
-        0, vif.pl_state_sts, vif.pl_valid, vif.pl_trdy, vif.pl_stallreq,
-        vif.pl_flit_cancel, vif.tx_data_valid, vif.tx_data, vif.rate, vif.power_down);
-
-      seq = fdi_flit_seq::type_id::create("seq");
-
-      // Fork the component timing tasks in the SAME order as the proven directed
-      // test (loopback, stall_ack, tx capture, rx capture, drive), then start the
-      // sequence that feeds the driver.
-      fork
-        env.pipe.loopback.run();
-        env.agent.driver.stall_ack();
-        env.pipe.tx_mon.capture();
-        env.agent.rx_mon.capture();
-        env.agent.driver.drive();
-        seq.start(env.agent.seqr);
-      join_none
-
-      for (int cyc = 1; cyc < RUN_PCLK; cyc++) begin
-        @(posedge vif.pclk); #0.1;
-        $fwrite(fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d\n",
-          cyc, vif.pl_state_sts, vif.pl_valid, vif.pl_trdy, vif.pl_stallreq,
-          vif.pl_flit_cancel, vif.tx_data_valid, vif.tx_data, vif.rate, vif.power_down);
-      end
-      $fclose(fd);
-
-      phase.drop_objection(this);
-    endtask
-  endclass
 endpackage : ucie2_pipe7_uvm_pkg

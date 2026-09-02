@@ -98,6 +98,49 @@ Codespace/browser with no desktop app or X11 (your browser-centric workflow):
   viewer is too heavy for one increment, ship a smaller self-contained VCD viewer
   and say so honestly.
 
+## Increment 5 — UVM Cookbook restructure + EDA Playground bundle
+
+Maintainer request (2026-09-02): make the SV UVM env read like standard UVM
+(UVM Cookbook / Easier-UVM — **one class per file**, in an agent/env/test tree)
+and add a **paste-ready EDA Playground bundle** of the whole DUT + testbench.
+Authored directly (not via the swarm), structural split only.
+
+- **Split** `dv/uvm/sv/` into one-class-per-file `.sv` sources under
+  `fdi_agent/`, `pipe_agent/`, `env/`, `test/`, kept in the single package
+  `ucie2_pipe7_uvm_pkg` via an ordered `` `include `` list (Cookbook's own
+  idiom; one compilation unit ⇒ no cross-package risk). The five old `.svh`
+  blobs are gone. **Pure textual reorganization** — the token stream is
+  byte-identical to the pre-split package (verified by a comment/whitespace-
+  normalized diff: 268 lines each, zero delta), so `test/ucie2_roundtrip_test.sv`
+  (the trace emitter) and `trace_compare` are untouched. `dv/uvm/vlt/Makefile`
+  `SRCS` is unchanged (it still compiles the package, which now `` `include ``s
+  the split files).
+- **EDA Playground bundle**: `tools/gen_eda_playground.py` (stdlib) +
+  `make eda-playground` / `make eda-check`. Concatenates `rtl/` + `dv/uvm/sv/`
+  in vlt compile order into `dv/uvm/eda_playground/{design.sv, testbench.sv,
+  ucie2_pipe7_bridge_top.sv}`, flattening the UVM package's project `` `include ``s
+  inline (EDA Playground has no incdir). Additive, **off-gate**; the bundle
+  cannot run `trace_compare` (documented honestly in its README).
+
+**LANDED banners (local):** `[lint] RTL OK`; PyUVM `RoundtripTest PASS`
+(3-way agreement, driven=8 recovered=8); `[lint-uvm] SV UVM env elaborates OK`
+(from-source Verilator 5.050, split tree); `[EDA] wrote 3 files (5103 lines)` +
+`[EDA] up to date` (drift-guard) + all-in-one elaborates under Verilator. The
+byte-identical `make uvm` + `make trace-compare` proof runs in CI.
+
+### CI step — APPLIED in this PR (advisory, post-gate)
+
+`make eda-check` is a pure-Python drift-guard (no simulator), wired into
+`.github/workflows/uvm-verilator.yml` as an advisory, **post-gate**
+(`continue-on-error`) step after the cross-check — authored directly (this PR
+carries workflow scope), not deferred to a follow-up:
+
+```yaml
+      - name: EDA Playground bundle drift-guard (advisory, post-gate)
+        continue-on-error: true
+        run: make eda-check
+```
+
 ## Acceptance (every increment)
 
 `make lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare` byte-identical green, unchanged

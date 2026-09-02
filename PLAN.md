@@ -119,9 +119,11 @@ dv/
   common/vectors/         shared stimulus vectors (feed both TBs)
   pyuvm/                  PyUVM-on-cocotb TB (apt Verilator; local + CI)
   uvm/
-    sv/                   shared SV UVM env: interfaces, agents, seq_lib, sb
+    sv/                   SV UVM env, Cookbook-style one-class-per-file:
+                          {fdi_agent,pipe_agent,env,test}/ + if + sva + pkg + tb
     vlt/                  Verilator 5.050 --binary flow (lint local; run CI/Railway)
     vcs/                  optional VCS/Xcelium mirror (authored, not run here)
+    eda_playground/       generated paste-ready bundle (make eda-playground)
 docs/                     spec cross-check, verification plan, architecture
 tools/                    trace_compare.py, gen_report.py, lint wrappers
 .devcontainer/            devcontainer.json + Dockerfile (Codespaces)
@@ -196,7 +198,10 @@ predecessor (only the FDI front-end + top are new).
 
 ### Phase D — DV tier 2: SystemVerilog UVM-on-Verilator
 - [ ] **13. Shared SV UVM env** (`dv/uvm/sv`): interfaces, agents, seq_lib,
-  scoreboard, per-cycle trace emitter mirroring the PyUVM format.
+  scoreboard, per-cycle trace emitter mirroring the PyUVM format. Laid out
+  UVM-Cookbook style (one class per file under `{fdi_agent,pipe_agent,env,test}/`,
+  a single `` `include ``-driven package); a generated EDA Playground bundle lives
+  in `dv/uvm/eda_playground/` (`make eda-playground`). See Phase G increment 5.
 - [ ] **14. Verilator `--binary` flow** (`dv/uvm/vlt`): `make -C dv/uvm/vlt lint`
   runs **locally**; full build+run runs in **CI + Railway** only.
 - [ ] **15. `trace_compare.py` gate**: PyUVM trace ≡ UVM trace, cycle-exact.
