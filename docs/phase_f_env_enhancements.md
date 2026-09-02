@@ -121,15 +121,16 @@ and writes only under `build/formal/`. The `Dockerfile` runtime stage carries ap
 and its fail-fast healthcheck now asserts all three. On a host without `sby` the
 target prints `[FORMAL] SKIP: …` and exits 0.
 
-### CI step — NOT YET APPLIED (needs a token with `workflows` scope)
+### CI step — APPLIED (maintainer follow-up, 2026-09-02)
 
-The swarm's GitHub App token cannot write `.github/workflows/**`
+The swarm's GitHub App token could not write `.github/workflows/**`
 (`refusing to allow a GitHub App to create or update workflow … without
 'workflows' permission`), so the post-gate CI step below was authored and
-verified but **left out of the PR**. A maintainer should apply it to
-`.github/workflows/uvm-verilator.yml`, inserting it **after** the
-"Upload traces + UVM log" step (i.e. after `trace-compare` and its artifact
-upload) and **before** the advisory "RTL line coverage" step:
+verified in the increment-3 PR but **applied separately by the maintainer** (who
+pushes over HTTPS with `workflows` scope). It now lives in
+`.github/workflows/uvm-verilator.yml`, **after** the "Upload traces + UVM log"
+step (i.e. after `trace-compare` and its artifact upload) and **before** the
+advisory "RTL line coverage" step:
 
 ```yaml
       # Additive formal tier (Phase F increment 3, SymbiYosys BMC). Strictly
