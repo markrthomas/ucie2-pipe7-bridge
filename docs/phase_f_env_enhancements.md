@@ -240,13 +240,14 @@ existing targets and reads their stdout. Per-tier logs are tee'd to
 > named 'encodings'`. The documented workaround applies to the collector too —
 > `make metrics METRICS_ARGS="--make-arg PYTHON3=$(command -v python3)"`.
 
-### CI step — for maintainer to apply
+### CI step — APPLIED (maintainer follow-up, 2026-09-02)
 
 Same constraint as increment 3: the swarm's GitHub App token cannot write
-`.github/workflows/**`, so this step is authored here and **left out of the PR**.
-Append it to the **end** of `.github/workflows/uvm-verilator.yml` — after the
-"Upload coverage report" step, i.e. after everything else in the job — so it is
-strictly post-gate and can never sit inside a timed DV run:
+`.github/workflows/**`, so this step was authored here and **applied separately
+by the maintainer** (who pushes over HTTPS with `workflows` scope). It now lives
+at the **end** of `.github/workflows/uvm-verilator.yml` — after the "Upload
+coverage report" step, i.e. after everything else in the job — so it is strictly
+post-gate and can never sit inside a timed DV run:
 
 ```yaml
       # Additive DV metrics + dashboard (Phase F increment 4). LAST step in the
