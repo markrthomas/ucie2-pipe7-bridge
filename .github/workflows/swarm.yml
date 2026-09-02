@@ -82,6 +82,8 @@ jobs:
           set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends yosys z3
+          # SymbiYosys (sby) is a Python program that imports `click`.
+          python -m pip install --break-system-packages click
           git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby
           sudo make -C /tmp/sby install
           yosys --version | head -1
