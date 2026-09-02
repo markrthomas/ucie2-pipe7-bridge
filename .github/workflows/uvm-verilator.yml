@@ -131,3 +131,33 @@ jobs:
             build/coverage/annotated
           retention-days: 7
           if-no-files-found: ignore
+
+      # Additive DV metrics + dashboard (Phase F increment 4). LAST step in the
+      # job: strictly POST-GATE, after the --binary UVM run, trace-compare and
+      # the coverage steps, so it can never perturb the byte-identical
+      # cross-check. ADVISORY (continue-on-error) — a metrics hiccup must never
+      # red the job that guards the gate. The collector re-runs only the cheap
+      # tiers; `uvm` is NOT rebuilt, its result is read from the run.log the
+      # gate already wrote, and `trace-compare` re-diffs the traces on disk.
+      # Tiers whose tools are absent are recorded 'not-run', never 'fail'.
+      - name: DV metrics row (advisory, post-gate)
+        continue-on-error: true
+        run: |
+          make metrics \
+            METRICS_TIERS=lint,pyuvm,fcov,coverage,formal,trace-compare \
+            METRICS_ARGS="--env ci \
+              --make-arg VERILATOR=$VERILATOR_PREFIX/bin/verilator \
+              --make-arg VERILATOR_COVERAGE=$VERILATOR_PREFIX/bin/verilator_coverage"
+          make dashboard
+
+      - name: Upload metrics dashboard
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: dv-metrics-dashboard
+          path: |
+            metrics/dashboard.html
+            metrics/metrics.db
+          retention-days: 7
+          if-no-files-found: ignore
