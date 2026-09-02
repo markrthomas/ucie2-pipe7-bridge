@@ -162,6 +162,130 @@ Port the sibling's `docs/SWARM_PLAN.md` feature: committed SQLite
 CSS/JS, no CDN), `make metrics` (collect a row) + `make dashboard` (regen), a
 post-gate CI step. Measured vs estimated kept separate; never perturb the gate.
 
+**LANDED.** Four new files plus two `Makefile` targets, all **stdlib Python**
+(the `sqlite3` *module*; no `sqlite3` CLI, no pip package, no CDN anywhere):
+
+| File | What |
+|------|------|
+| `metrics/schema.sql` | one `runs` table: ISO-8601 UTC timestamp, git short-sha / branch / dirty flag, env, row-level `source`, and per tier (`lint`, `pyuvm`, `fcov`, `uvm`, `trace_compare`, `coverage`, `formal`) a `*_status` / `*_secs` / `*_source` triple plus its headline number (`fcov_bins_hit/total`, `coverage_line_pct`, `formal_jobs_passed/total`, `trace_cycles`) |
+| `metrics/metrics.db` | the committed store, initialized from that schema with a real measured row from the swarm host |
+| `tools/metrics_collect.py` | runs the existing tier targets **unmodified** (or reads the log the gate already wrote) and parses their banners into one appended row |
+| `tools/metrics_dashboard.py` | regenerates `metrics/dashboard.html` — one self-contained file |
+
+Measured on the swarm host (GitHub runner: apt Verilator 5.020, Icarus 12,
+yosys 0.33 + sby 0.68 + z3 4.8.12), `make metrics` then `make dashboard`:
+
+```
+[METRICS] running: make lint
+[METRICS] running: make pyuvm
+[METRICS] running: make fcov
+[METRICS] running: make coverage
+[METRICS] running: make formal
+[METRICS] lint=pass  pyuvm=pass  fcov=pass  uvm=not-run  trace-compare=not-run  coverage=pass  formal=pass
+[METRICS] row #1 appended to metrics/metrics.db (1 row(s), source=measured, sha=ac6af48, 2026-09-02T15:06:43Z)
+[DASH] wrote metrics/dashboard.html (9913 bytes, 1 of 1 row(s), self-contained: no CDN/JS/external fetch)
+```
+
+with the gate itself unchanged in the same environment:
+
+```
+[lint] RTL OK
+** test_roundtrip.RoundtripTest   PASS         410.00           0.04       9878.56  **
+** TESTS=1 PASS=1 FAIL=0 SKIP=0                410.00           0.07       5691.59  **
+[SB] integrated-bridge cross-check PASS (3-way agreement)
+[FCOV] bins=39/39 = 100.0%  tool=cocotb_coverage
+[COV] line=63.3% (38/60 RTL lines)
+[FORMAL] 3 job(s) PASSED (bounded model check -- not an unbounded proof)
+```
+
+**Measured vs estimated, honestly.** Every tier carries its own `*_source`:
+
+- `measured` — the tier ran during that invocation (or its banner came from the
+  log the gate had just written, e.g. `dv/uvm/vlt/obj/run.log` for `uvm`, which
+  is deliberately *never* rebuilt by the collector). Recorded in `notes`.
+- `estimated` — carried forward from the newest previously-measured row by
+  `make metrics METRICS_ARGS=--carry-forward`. **Off by default.** Such values
+  are starred in the banner, badged in the dashboard, and flip the row-level
+  `source` to `mixed`/`estimated`; they are never presented as a measurement of
+  the current commit.
+- `none` — the tier did not run and nothing was carried forward; status is
+  `not-run`.
+
+A tier that cannot run (tool absent, or the `--binary` UVM flow that needs the
+from-source Verilator) is classified **`not-run`, never `fail`**, and no number
+is invented for it — the classifier only records `fail` on positive evidence (a
+`FAIL`/`FAILED` banner, cocotb `FAIL=n>0`, `[COV] FAIL`) or a non-zero exit with
+no tool-absence marker in the output. That is why the seed row honestly shows
+`uvm=not-run` and `trace-compare=not-run`: this host has neither the UVM
+Verilator nor a UVM trace to diff. `trace-compare` is skipped outright unless
+**both** TB traces are on disk.
+
+The dashboard is a **single self-contained HTML file**: all CSS inlined in a
+`<style>` block, trend charts drawn as hand-written inline `<svg>` polylines (no
+chart library), **no `<script src>`, no CDN, no external fetch of any kind** —
+verified with a grep for `http`/`src=`/`@import`/`url(` over the output (zero
+hits). It renders offline by double-clicking.
+
+Additive and outside the gate: `make metrics` / `make dashboard` are new targets,
+are not invoked by `lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`/`coverage`/
+`formal`, touch no RTL, no testbench, neither trace emitter and no part of the
+fixed clock/reset/stimulus schedule — the collector only shells out to the
+existing targets and reads their stdout. Per-tier logs are tee'd to
+`build/metrics/<tier>.log` (git-ignored); only `metrics/metrics.db` and
+`metrics/dashboard.html` are committed.
+
+> Host note, unrelated to this change: on a box where `/usr/bin/python3` (which
+> Verilator's `verilated.mk` hardcodes) is a different version from the Python
+> cocotb runs on, the Verilator build dies with `ModuleNotFoundError: No module
+> named 'encodings'`. The documented workaround applies to the collector too —
+> `make metrics METRICS_ARGS="--make-arg PYTHON3=$(command -v python3)"`.
+
+### CI step — for maintainer to apply
+
+Same constraint as increment 3: the swarm's GitHub App token cannot write
+`.github/workflows/**`, so this step is authored here and **left out of the PR**.
+Append it to the **end** of `.github/workflows/uvm-verilator.yml` — after the
+"Upload coverage report" step, i.e. after everything else in the job — so it is
+strictly post-gate and can never sit inside a timed DV run:
+
+```yaml
+      # Additive DV metrics + dashboard (Phase F increment 4). LAST step in the
+      # job: strictly POST-GATE, after the --binary UVM run, trace-compare and
+      # the coverage steps, so it can never perturb the byte-identical
+      # cross-check. ADVISORY (continue-on-error) — a metrics hiccup must never
+      # red the job that guards the gate. The collector re-runs only the cheap
+      # tiers; `uvm` is NOT rebuilt, its result is read from the run.log the
+      # gate already wrote, and `trace-compare` re-diffs the traces on disk.
+      # Tiers whose tools are absent are recorded 'not-run', never 'fail'.
+      - name: DV metrics row (advisory, post-gate)
+        continue-on-error: true
+        run: |
+          make metrics \
+            METRICS_TIERS=lint,pyuvm,fcov,coverage,formal,trace-compare \
+            METRICS_ARGS="--env ci \
+              --make-arg VERILATOR=$VERILATOR_PREFIX/bin/verilator \
+              --make-arg VERILATOR_COVERAGE=$VERILATOR_PREFIX/bin/verilator_coverage"
+          make dashboard
+
+      - name: Upload metrics dashboard
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: dv-metrics-dashboard
+          path: |
+            metrics/dashboard.html
+            metrics/metrics.db
+          retention-days: 7
+          if-no-files-found: ignore
+```
+
+Note what this step does **not** do: it does not commit the row back to the repo.
+The CI run's `metrics.db`/`dashboard.html` are published as an **artifact**; the
+committed store grows when a maintainer runs `make metrics && make dashboard`
+locally and commits the result. (Auto-committing from CI would need a push token
+and would race the PR branch — deliberately out of scope.)
+
 ## Acceptance (every increment)
 
 `make lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare` byte-identical green, unchanged
