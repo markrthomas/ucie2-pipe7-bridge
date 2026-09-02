@@ -455,7 +455,9 @@ def detect_regressions(conn: sqlite3.Connection, row: dict) -> list:
                 fmt = "{:.1f}" if isinstance(was, float) else "{}"
                 flags.append(f"{label}: {fmt.format(was)} -> {fmt.format(now)} "
                              f"(vs run #{prev['id']})")
-    except (sqlite3.Error, KeyError, TypeError) as exc:   # advisory: never fatal
+    # Advisory by construction: a comparison that cannot be made is reported as
+    # "skipped", never as a failure and never as an exception to the caller.
+    except (sqlite3.Error, KeyError, IndexError, TypeError) as exc:
         flags.append(f"(regression check skipped: {exc})")
     return flags
 
