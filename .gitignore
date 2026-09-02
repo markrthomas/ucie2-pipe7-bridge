@@ -16,6 +16,10 @@ build/coverage/
 
 # Formal (make formal) -- generated yosys-readable RTL copies + sby work dirs
 build/formal/
+
+# Metrics (make metrics) -- per-tier tee'd logs only. metrics/metrics.db and
+# metrics/dashboard.html are deliberately COMMITTED and must NOT be ignored.
+build/metrics/
 dv/uvm/vlt/obj/
 dv/uvm/vcs/sim_*
 dv/uvm/vcs/*.log

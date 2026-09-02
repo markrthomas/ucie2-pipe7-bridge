@@ -42,6 +42,8 @@ flowchart LR
 | `tools/coverage_report.py` | `make coverage` line-coverage report (`[COV] line=NN.N%`) |
 | `formal/` | SymbiYosys BMC wrappers + `.sby` jobs (`make formal`, see below) |
 | `tools/formal_run.sh`, `tools/formal_prep.py` | `make formal` driver + yosys-frontend source shim |
+| `metrics/` | committed metrics store (`schema.sql`, `metrics.db`) + generated `dashboard.html` |
+| `tools/metrics_collect.py`, `tools/metrics_dashboard.py` | `make metrics` row collector, `make dashboard` HTML generator |
 | `docs/` | spec cross-check, verification plan |
 | `.devcontainer/`, `Dockerfile*`, `.railway/` | Codespaces, containers, Railway |
 
@@ -69,6 +71,13 @@ Two post-gate, additive tiers round it out (never part of the gate):
 ```bash
 make coverage       # [COV] line=NN.N%              (advisory RTL line coverage)
 make formal         # [FORMAL] <job>: BMC depth N PASSED   (SymbiYosys BMC)
+```
+
+…plus the post-gate metrics store and its offline dashboard:
+
+```bash
+make metrics        # [METRICS] row #N appended to metrics/metrics.db
+make dashboard      # [DASH] wrote metrics/dashboard.html
 ```
 
 ## Line coverage (advisory)
@@ -147,6 +156,57 @@ tools `make formal` prints a `[FORMAL] SKIP:` line and exits 0.
 > `import ucie2_pipe7_pkg::*;`, `return` inside a function, or an `int'()` cast).
 > `rtl/` is never modified. The `.sby` engine is `smtbmc --unroll z3`: the default
 > non-unrolled encoding is pathological for z3 4.8.12 and does not finish.
+
+## Metrics + dashboard (post-gate)
+
+```bash
+make metrics      # run the tiers this host can, append ONE row to metrics/metrics.db
+make dashboard    # regenerate metrics/dashboard.html from that DB
+```
+
+```
+[METRICS] lint=pass  pyuvm=pass  fcov=pass  uvm=not-run  trace-compare=not-run  coverage=pass  formal=pass
+[METRICS] row #1 appended to metrics/metrics.db (1 row(s), source=measured, sha=ac6af48, 2026-09-02T15:06:43Z)
+[DASH] wrote metrics/dashboard.html (9913 bytes, 1 of 1 row(s), self-contained: no CDN/JS/external fetch)
+```
+
+A small **committed** SQLite store (`metrics/schema.sql` → `metrics/metrics.db`,
+one row per `make metrics`) plus a **single self-contained** HTML dashboard —
+all CSS inlined, trend sparklines drawn as hand-written inline `<svg>`, **no CDN,
+no external fetch, no `<script src>`**. Open `metrics/dashboard.html` by
+double-clicking it; it renders fully offline. Everything uses **stdlib Python**
+(`sqlite3` module — the `sqlite3` CLI is not required).
+
+Each row records the ISO-8601 UTC timestamp, git short-sha, branch, dirty flag,
+env, and per tier (`lint`, `pyuvm`, `fcov`, `uvm`, `trace-compare`, `coverage`,
+`formal`) its status, duration and headline number (`[FCOV] bins=H/T`,
+`[COV] line=NN.N%`, `[FORMAL] N/N jobs`, trace cycles).
+
+**Measured vs estimated is never blurred.** Every tier carries its own `*_source`:
+
+| `*_source` | meaning |
+|-----------|---------|
+| `measured` | the tier ran for this row (or its banner was read from the log the gate just wrote, e.g. `dv/uvm/vlt/obj/run.log`) — the numbers are its own output |
+| `estimated` | carried forward from an older measured row by `make metrics METRICS_ARGS=--carry-forward` (**off by default**) — flagged in the DB, starred in the banner and badged in the dashboard, and never presented as a measurement of this commit |
+| `none` | the tier did not run; status is `not-run` |
+
+A tier that cannot run on a host (tool absent, or the `--binary` UVM flow that
+needs the from-source Verilator) is recorded **`not-run`, never `fail`**, and no
+number is invented for it. Tune what runs with
+`make metrics METRICS_TIERS=lint,pyuvm` (default:
+`lint,pyuvm,fcov,coverage,formal,trace-compare`; `uvm` is never rebuilt — its
+result is read from the gate's own `run.log` when present, and `trace-compare` is
+recorded `not-run` unless both TB traces are on disk). Per-tier logs are tee'd to
+`build/metrics/<tier>.log` (git-ignored).
+
+Both targets are **additive and outside the gate**: they are not run by
+`lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`/`coverage`/`formal`, they touch no
+RTL, no testbench, no trace emitter and no clock/reset/stimulus schedule — they
+only invoke the existing targets unmodified and parse their banners. The matching
+**post-gate, `continue-on-error`** CI step for `uvm-verilator.yml` (last step,
+after the coverage steps, uploading `dashboard.html` as an artifact) is written
+out in `docs/phase_f_env_enhancements.md` (increment 4) and still needs a
+maintainer with `workflows` token scope to apply it.
 
 ## Bound assertions (SVA)
 

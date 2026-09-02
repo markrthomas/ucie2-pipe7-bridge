@@ -242,9 +242,29 @@ predecessor (only the FDI front-end + top are new).
   hierarchical references. **Bounded, not an unbounded proof.** Additive and
   outside the gate: a post-gate step in `uvm-verilator.yml` after `trace-compare`,
   also present in the Railway image; skips with exit 0 where `sby` is absent.
+- [x] **F4. Metrics + dashboard** — `make metrics` appends **one row** per
+  invocation to the committed SQLite store `metrics/metrics.db`
+  (`metrics/schema.sql`): ISO-8601 UTC timestamp, git short-sha/branch/dirty, env,
+  and per tier (`lint`, `pyuvm`, `fcov`, `uvm`, `trace-compare`, `coverage`,
+  `formal`) its status, duration and headline number. `make dashboard` regenerates
+  `metrics/dashboard.html` — **one self-contained file**, inlined CSS + hand-drawn
+  inline-SVG sparklines, **no CDN/JS/external fetch**, opens offline. Stdlib
+  Python only (`sqlite3` module, no CLI, no pip). It **parses the existing tier
+  banners** (`[lint] RTL OK`, the cocotb PASS summary, `[FCOV] bins=…`,
+  `[COV] line=…`, `[FORMAL] … PASSED`) after invoking the targets unmodified, or
+  reads the log the gate already wrote (`dv/uvm/vlt/obj/run.log` for `uvm`).
+  **Measured vs estimated never conflated:** every tier carries its own
+  `*_source` (`measured` / `estimated` / `none`); a tier that could not run is
+  `not-run` with no invented number — never `fail` — and carry-forward
+  (`METRICS_ARGS=--carry-forward`) is off by default and tags what it copies
+  `estimated`. Seed row measured on the swarm host:
+  `lint=pass pyuvm=pass fcov=pass(39/39) coverage=pass(63.3%) formal=pass(3/3)`,
+  `uvm`/`trace-compare` = `not-run` (they need the from-source UVM Verilator;
+  CI/Railway measure them). Additive and outside the gate; the CI step is
+  post-gate and `continue-on-error`, uploading `dashboard.html` as an artifact.
 - [ ] **21+. Coverage closure, randomized waveform suite, error-path directed
   tests, overflow/accumulator guards, deeper/unbounded formal (k-induction on the
-  gearbox), metrics dashboard.** Enumerate once Phase E is green.
+  gearbox).** Enumerate once Phase E is green.
 
 ## 8. Per-commit green gate
 

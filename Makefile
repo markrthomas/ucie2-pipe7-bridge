@@ -26,6 +26,7 @@ RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
 .PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare coverage formal \
+        metrics dashboard \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
         railway-swarm-agents swarm clean
 
@@ -50,6 +51,13 @@ help:
 	@echo "                     ctrl FSM and the Gen5 gearbox (apt yosys+sby+z3;"
 	@echo "                      prints [FORMAL] <job>: BMC depth N PASSED; skips"
 	@echo "                      cleanly with exit 0 if sby is not installed)"
+	@echo "  make metrics       append one DV-metrics row to metrics/metrics.db [local/CI; post-gate]"
+	@echo "                     (runs METRICS_TIERS, parses the existing tier"
+	@echo "                      banners; absent tiers = not-run, never fail;"
+	@echo "                      prints [METRICS] row #N appended to …)"
+	@echo "  make dashboard     regenerate metrics/dashboard.html from the DB [local/CI; post-gate]"
+	@echo "                     (single self-contained file: inlined CSS +"
+	@echo "                      hand-drawn SVG, no CDN; prints [DASH] wrote …)"
 	@echo "  make railway-prebuild  build the prebuilt verilator-uvm image  [Docker]"
 	@echo "  make railway-template  build the 4GB sandbox toolchain template [Railway]"
 	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
@@ -130,6 +138,34 @@ coverage:
 # Bounded, not unbounded: the banner reports "BMC depth N".
 formal:
 	bash tools/formal_run.sh $(FORMAL_JOBS)
+
+# ---- DV metrics + dashboard (Phase F increment 4) ---------------------------
+# ADDITIVE and OUTSIDE the gate. `metrics` runs the EXISTING tier targets
+# unmodified (or reads the log the gate already wrote, e.g. dv/uvm/vlt/obj/
+# run.log for `uvm`) and appends ONE row to the committed SQLite store; it
+# never edits rtl/dv, never touches the trace emitters, and never changes the
+# fixed clock/reset/stimulus schedule. `dashboard` only reads that store and
+# rewrites one self-contained HTML file (inlined CSS + hand-drawn SVG, NO CDN).
+# Neither is part of lint/pyuvm/fcov/uvm/trace-compare/coverage/formal, and
+# neither may be run inside a timed DV run.
+#
+# A tier that cannot run here (missing tool, too heavy) is recorded as 'not-run'
+# with source='none' — never as a failure, and never with a made-up number.
+# `make metrics METRICS_ARGS=--carry-forward` fills such gaps from the newest
+# measured row and tags them source='estimated' (off by default).
+#
+# Stdlib Python only (sqlite3 module; the sqlite3 CLI is NOT required).
+METRICS_DB    ?= metrics/metrics.db
+METRICS_HTML  ?= metrics/dashboard.html
+METRICS_TIERS ?= lint,pyuvm,fcov,coverage,formal,trace-compare
+METRICS_ARGS  ?=
+
+metrics:
+	$(PYTHON) tools/metrics_collect.py --db $(METRICS_DB) --run "$(METRICS_TIERS)" \
+	  $(METRICS_ARGS)
+
+dashboard:
+	$(PYTHON) tools/metrics_dashboard.py --db $(METRICS_DB) --out $(METRICS_HTML)
 
 # ---- Railway cloud swarm (CI/Railway have the RAM the local box lacks) -------
 # Prebuild the verilator-uvm toolchain image so swarm workers boot hot instead
