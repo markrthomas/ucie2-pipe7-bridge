@@ -87,6 +87,24 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      # Additive formal tier (Phase F increment 3, SymbiYosys BMC). Strictly
+      # POST-GATE: placed after trace-compare and its artifact upload so it can
+      # never perturb lint/pyuvm/fcov/uvm/trace-compare. Reads no testbench and
+      # touches no rtl/dv file. z3 is already installed above; add yosys + the
+      # click module + SymbiYosys itself (shallow git clone, `make install` is
+      # a pure-Python copy -- no compile). NOT OSS CAD Suite. This must PASS.
+      - name: Install SymbiYosys formal tools (yosys, sby, click)
+        run: |
+          set -euo pipefail
+          sudo apt-get update && sudo apt-get install -y yosys
+          pip install --break-system-packages click
+          git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby
+          sudo make -C /tmp/sby install
+          rm -rf /tmp/sby
+
+      - name: Formal BMC (SymbiYosys, post-gate)
+        run: make formal
+
       # Additive, advisory line-coverage report (Phase F increment 2). Runs the
       # SAME from-source Verilator + cocotb/pyuvm already on PATH/installed above,
       # in a separate instrumented build dir, so it cannot perturb the gate. Must
