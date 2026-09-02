@@ -33,7 +33,7 @@ then implement **only the increment named in your task** (default: increment 1).
   `Claude-Session` trailers, **never commit on `main`** — branch
   `swarm/phaseG-<slug>`, push incrementally, open a PR (draft early). CI validates.
 
-## Increment 1 — metrics: capture more + trends + regression flags
+## Increment 1 — metrics: capture more + trends + regression flags — **LANDED**
 
 Extend the increment-4 store (`metrics/schema.sql` at `user_version = 1`,
 `tools/metrics_collect.py`, `tools/metrics_dashboard.py`). Bump the schema to
@@ -50,6 +50,103 @@ Extend the increment-4 store (`metrics/schema.sql` at `user_version = 1`,
   duration ballooned past a threshold, a tier went pass→fail) with a badge in the
   dashboard and a `[METRICS] regressions: N` line. Advisory — never reds a gate.
 Docs + `make help`. `make metrics`/`make dashboard` stay post-gate + advisory.
+
+### What landed
+
+- **`metrics/schema.sql` → `PRAGMA user_version = 2`.** Ten new `runs` columns
+  plus a `formal_jobs` side table (`run_id, job, depth, status, source`) and a
+  `runs (git_branch, id)` index. `tools/metrics_collect.py:migrate()` brings an
+  existing store up in place — `PRAGMA table_info(runs)`, then
+  `ALTER TABLE runs ADD COLUMN` for whatever is missing, then the unchanged
+  `CREATE … IF NOT EXISTS` script. Idempotent, and a no-op on a fresh DB.
+  **Every existing row is preserved**; the new columns come up `NULL`/`'none'`,
+  which is the honest reading of "that row never measured this".
+- **Four new signals, each with its own `*_source`** (`measured` | `estimated` |
+  `none`), so a number is never implied by its tier's roll-up:
+  - `coverage_branch_pct` — `tools/coverage_report.py` gained a
+    `[COV] branch=NN.N%` banner. It already *computed* branch points and printed
+    them in prose; the banner just makes them parseable. Reported **alongside**
+    the gated `[COV] line=` number, never folded into it, and omitted entirely
+    (rather than printed as `0%`) when the datafile carries no branch points.
+  - `formal_depth_max` + the `formal_jobs` rows — parsed from the **existing**
+    `[FORMAL] <job>: BMC depth N PASSED` lines; `tools/formal_run.sh` is
+    unchanged. Per-job rows are written for measured runs only, so a depth can
+    never be attributed to a job that did not run (carry-forward copies only the
+    `formal_depth_max` roll-up, tagged `estimated`).
+  - `roundtrip_cycles` — counted **read-only** from the per-cycle trace the
+    `pyuvm` tier just wrote (`dv/pyuvm/build/bridge.trace`, rows minus header).
+    `dv/pyuvm/test_roundtrip.py` and the fixed clock/reset/stimulus schedule are
+    untouched. Distinct from `trace_cycles` (what `trace-compare` diffed across
+    **both** TBs). Only recorded when the tier ran in this invocation — a stale
+    trace from an older checkout is never reported as this commit's measurement.
+  - `collect_peak_rss_mb` + `collect_source` — `resource.getrusage` `ru_maxrss`,
+    `max(self, heaviest child)`. Collect **wall time** is the pre-existing
+    `total_secs` (no duplicate column was added for it).
+- **Trends** (`tools/metrics_dashboard.py`): the chart row now follows the
+  latest row's **`git_branch` only** — a feature branch is never silently
+  compared against `main` — and plots **measured points only**, so a
+  carried-forward value leaves a gap instead of faking a data point. Ten
+  sparklines (line/branch/functional coverage, formal BMC depth, round-trip
+  cycles, `lint`/`pyuvm`/`fcov` runtimes, collect wall time, peak RSS), all
+  hand-drawn inline `<svg>` polylines: **no chart library, no CDN, no
+  `<script>`** — verified by grepping the generated HTML for `http`, `<script`,
+  `src=`, `@import` and `url(` (zero hits).
+- **Regression flags** (`tools/metrics_collect.py:detect_regressions`): each
+  measured signal is compared with the most recent prior row on the same branch
+  that measured *that same signal*. Flags on pass→fail, a
+  coverage/BMC-depth/cycle-count drop, or a runtime that **both** at least
+  doubled **and** grew ≥ 5 s (so a 0.09 s → 0.20 s `lint` blip is never
+  reported). The count and notes are stored on the row (`regressions`,
+  `regression_notes`), printed as `[METRICS] regressions: N`, and badged in the
+  dashboard. **Advisory:** the whole check is exception-guarded, the exit status
+  is untouched, and no gate reads it. A pre-v2 row renders `—` / "regressions
+  n/a" rather than a fabricated `0`.
+- Fixed a latent crash in `sparkline()`'s empty-series path (`%`-formatting
+  choked on the literal `width="100%"`), which the new charts made reachable —
+  it now renders "no measured data yet" for a signal a branch never measured.
+- Docs: `README.md` ("Metrics + dashboard" → new "Schema v2" section, coverage
+  section, quick start, repo map), `PLAN.md` item **G1**, and `make help`.
+
+Nothing was folded into the gate: `lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`/
+`coverage`/`formal` are byte-for-byte unchanged in behaviour, no RTL or trace
+emitter was touched, and no workflow file was edited (none was needed).
+
+**LANDED banners (local, GitHub runner: apt Verilator 5.020, Icarus 12,
+yosys 0.33 + sby 0.68 + z3 4.8.12):**
+
+```
+[lint] RTL OK
+** test_roundtrip.RoundtripTest   PASS         410.00           0.06       7352.66  **
+** TESTS=1 PASS=1 FAIL=0 SKIP=0                410.00           0.09       4621.96  **
+[SB] driven=8 recovered=8 stream_words=13 model_words=13
+[SB] integrated-bridge cross-check PASS (3-way agreement)
+[FCOV] bins=39/39 = 100.0%  tool=cocotb_coverage
+[COV] line=63.3% (38/60 RTL lines)
+[COV] branch=75.6% (34/45 RTL branch points, informational — not gated)
+[METRICS] schema migrated v1 -> v2: +10 column(s), 1 existing row(s) preserved
+[METRICS] lint=pass  pyuvm=pass  fcov=pass  uvm=not-run  trace-compare=not-run  coverage=pass  formal=pass
+[METRICS] signals: cov-branch=75.6%  formal-depth<=24 (3 job(s))  roundtrip-cycles=200  peak-rss=132MiB  wall=31.9s
+[METRICS] regressions: 0
+[METRICS] row #3 appended to metrics/metrics.db (3 row(s), source=measured, sha=b577055, 2026-09-02T21:43:21Z)
+[DASH] wrote metrics/dashboard.html (16307 bytes, 3 of 3 row(s), self-contained: no CDN/JS/external fetch)
+[DASH] trends: branch swarm/phaseG-metrics-trends (2 run(s)), inline SVG; regressions: 0 (advisory)
+```
+
+`uvm` and `trace-compare` are honestly `not-run` here — they need the
+from-source UVM Verilator, which this host does not have; CI/Railway measure
+them. The regression comparator was additionally exercised against a
+deliberately-degraded copy of the store and produced all seven flag kinds
+(`pyuvm: pass -> fail`, `coverage: runtime 2.4s -> 39.4s (>=2x)`,
+`coverage line% 63.3 -> 55.0`, `coverage branch% 75.6 -> 60.0`,
+`fcov% 100.0 -> 92.3`, `formal BMC depth 24 -> 12`,
+`round-trip cycles 200 -> 100`) — on a throwaway DB, never the committed one.
+
+### CI step — none needed
+
+Increment 1 changes no workflow: the existing post-gate `continue-on-error`
+metrics step (authored in `docs/phase_f_env_enhancements.md` increment 4) picks
+up the new signals, the migration and the regression line for free, because they
+ride the same `make metrics` / `make dashboard` invocations.
 
 ## Increment 2 — metrics: auto-commit rows from CI + richer dashboard UX
 

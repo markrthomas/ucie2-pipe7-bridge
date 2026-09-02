@@ -45,7 +45,8 @@ help:
 	@echo "  make uvm           full SV UVM --binary build+run              [CI/Railway]"
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
 	@echo "  make coverage      RTL line coverage of the directed round-trip [local; post-gate]"
-	@echo "                     (Verilator --coverage-line; prints [COV] line=NN.N%,"
+	@echo "                     (Verilator --coverage-line; prints [COV] line=NN.N%"
+	@echo "                      plus an informational [COV] branch=NN.N%;"
 	@echo "                      advisory floor — set a gate with COV_MIN=NN)"
 	@echo "  make formal        SymbiYosys BMC of the FDI link FSM, the PIPE MAC  [local; post-gate]"
 	@echo "                     ctrl FSM and the Gen5 gearbox (apt yosys+sby+z3;"
@@ -54,10 +55,18 @@ help:
 	@echo "  make metrics       append one DV-metrics row to metrics/metrics.db [local/CI; post-gate]"
 	@echo "                     (runs METRICS_TIERS, parses the existing tier"
 	@echo "                      banners; absent tiers = not-run, never fail;"
-	@echo "                      prints [METRICS] row #N appended to …)"
+	@echo "                      migrates an older store to schema user_version=2"
+	@echo "                      in place, preserving every row; also records"
+	@echo "                      coverage branch%, per-job formal BMC depth,"
+	@echo "                      round-trip sim cycles and collect peak RSS;"
+	@echo "                      prints [METRICS] signals: …, [METRICS] regressions: N"
+	@echo "                      (ADVISORY — never fails this or any other target)"
+	@echo "                      and [METRICS] row #N appended to …)"
 	@echo "  make dashboard     regenerate metrics/dashboard.html from the DB [local/CI; post-gate]"
 	@echo "                     (single self-contained file: inlined CSS +"
-	@echo "                      hand-drawn SVG, no CDN; prints [DASH] wrote …)"
+	@echo "                      hand-drawn SVG, no CDN; per-branch trend charts"
+	@echo "                      over MEASURED points only + a regression badge;"
+	@echo "                      prints [DASH] wrote … and [DASH] trends: …)"
 	@echo "  make eda-playground regenerate the EDA Playground bundle          [local; off-gate]"
 	@echo "                     (dv/uvm/eda_playground/: design.sv + testbench.sv"
 	@echo "                      + all-in-one; flattens the UVM pkg includes)"
@@ -143,7 +152,7 @@ coverage:
 formal:
 	bash tools/formal_run.sh $(FORMAL_JOBS)
 
-# ---- DV metrics + dashboard (Phase F increment 4) ---------------------------
+# ---- DV metrics + dashboard (Phase F inc 4; Phase G inc 1) ------------------
 # ADDITIVE and OUTSIDE the gate. `metrics` runs the EXISTING tier targets
 # unmodified (or reads the log the gate already wrote, e.g. dv/uvm/vlt/obj/
 # run.log for `uvm`) and appends ONE row to the committed SQLite store; it
@@ -157,6 +166,14 @@ formal:
 # with source='none' — never as a failure, and never with a made-up number.
 # `make metrics METRICS_ARGS=--carry-forward` fills such gaps from the newest
 # measured row and tags them source='estimated' (off by default).
+#
+# Phase G increment 1: the store is at schema user_version = 2 and `metrics`
+# migrates an older DB in place (ALTER TABLE ADD COLUMN; every row preserved).
+# It additionally records coverage branch%, per-job formal BMC depth, the
+# round-trip sim cycle count and the collect run's peak RSS -- each with its own
+# *_source -- and prints `[METRICS] regressions: N` from a comparison against
+# the newest prior MEASURED row on the same branch. That count is ADVISORY: it
+# never changes the exit status of this target and no gate reads it.
 #
 # Stdlib Python only (sqlite3 module; the sqlite3 CLI is NOT required).
 METRICS_DB    ?= metrics/metrics.db
