@@ -24,8 +24,15 @@ MODULE   ?= test_roundtrip
 export PYTHONPATH := $(abspath ../common/models):$(abspath ../common/vectors):$(PYTHONPATH)
 
 # Verilator needs SV + timing control for cocotb clock/reset stimulus.
+#
+# NOTE (Phase G increment 3): `--trace` is deliberately NOT here. cocotb appends
+# EXTRA_ARGS to BOTH the verilate command and the simulation command, so a
+# `--trace` in this variable compiled the VCD tracer in *and* switched it on at
+# run time — the gate silently wrote a 170 KB dv/pyuvm/dump.vcd on every
+# `make pyuvm`/`make fcov`. The gate is wave-free again; waveforms are opt-in via
+# the WAVES=1 block below (see `make waves` / `make wave` at the repo root).
 ifeq ($(SIM),verilator)
-    EXTRA_ARGS += --trace --timing -Wno-fatal
+    EXTRA_ARGS += --timing -Wno-fatal
 endif
 # Icarus (the independent engine for the functional-coverage tier) needs SV-2012.
 ifeq ($(SIM),icarus)
@@ -48,7 +55,33 @@ ifeq ($(RTL_COVERAGE),1)
     EXTRA_ARGS += --coverage-line
 endif
 
+# ---- Waveform dump build (Phase G increment 3) ------------------------------
+# INERT unless WAVES=1, so `make pyuvm`/`make fcov`/`make coverage` build and run
+# EXACTLY as before — no tracer compiled in, no dump written, no runtime cost, and
+# the byte-identical per-cycle trace (build/bridge.trace) is untouched.
+#
+# WAVES=1 is set ONLY by the repo-root `waves`/`wave`/`wave-check` targets. It:
+#   * builds into a SEPARATE SIM_BUILD (wave_build/), so the gate's own sim_build
+#     objects are never replaced by instrumented ones (same trick as cov_build);
+#   * adds `-DWAVES` — the one dedicated define reserved for "dump waveforms"
+#     project-wide, so the deferred SV UVM $dumpfile hook can key off the same
+#     name instead of inventing a second switch;
+#   * adds `--trace-fst --trace-structs` at COMPILE time only (COMPILE_ARGS, not
+#     EXTRA_ARGS) so VM_TRACE_FST=1 and cocotb's verilator main writes FST; and
+#   * adds `--trace --trace-file <fst>` at RUN time only (SIM_ARGS), which is what
+#     actually opens the dump.
+# Verilator's own FST writer + apt gtkwave. NOT OSS CAD Suite.
+WAVE_DIR  ?= $(abspath ../../build/waves)
+WAVE_FILE ?= $(WAVE_DIR)/$(MODULE).fst
+
+ifeq ($(WAVES),1)
+    SIM_BUILD    := $(abspath wave_build)
+    COMPILE_ARGS += -DWAVES --trace-fst --trace-structs
+    SIM_ARGS     += --trace --trace-file $(WAVE_FILE)
+endif
+
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 clean::
-	rm -rf sim_build cov_build build results.xml coverage.dat __pycache__
+	rm -rf sim_build cov_build wave_build build results.xml coverage.dat \
+	       dump.vcd dump.fst __pycache__

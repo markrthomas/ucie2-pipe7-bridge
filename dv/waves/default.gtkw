@@ -1,0 +1,125 @@
+[*]
+[*] GTKWave Analyzer v3.3.116 (w)1999-2023 BSI
+[*]
+[*] ucie2-pipe7-bridge -- default waveform layout (Phase G increment 3).
+[*] Curated debug view of the directed Gen5 FDI round-trip: FDI in, link FSM,
+[*] ingress -> Gen5 framer -> PIPE TX, PHY loopback, PIPE RX -> deframer ->
+[*] egress -> FDI out, plus PIPE MAC control and bridge status.
+[*]
+[*] Authored BY GTKWave (headless, xvfb + `gtkwave -S`), so every net path below
+[*] is exactly the name GTKWave resolves in the real dump. `make wave-check`
+[*] re-proves that against a fresh dump on every run -- see tools/wave_check.py.
+[*]
+[*] wave-check-target: pyuvm test_roundtrip
+[*]
+[dumpfile] "build/waves/test_roundtrip.fst"
+[savefile] "dv/waves/default.gtkw"
+[timestart] 0
+[size] 1000 600
+[pos] -1 -1
+*0.000000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[sst_width] 276
+[signals_width] 326
+[sst_expanded] 1
+[sst_vpaned_height] 157
+@200
+-==== clocks + reset ====
+@28
+lclk
+lclk_rst_n
+pclk
+pclk_rst_n
+@200
+-==== FDI TX (lp_ -> bridge) ====
+@22
+lp_data[127:0]
+@28
+lp_valid
+lp_irdy
+pl_trdy
+@200
+-==== FDI RX (bridge -> pl_) ====
+@22
+pl_data[127:0]
+@28
+pl_valid
+pl_flit_cancel
+@200
+-==== FDI link state machine ====
+@22
+lp_state_req[3:0]
+pl_state_sts[3:0]
+@28
+pl_stallreq
+lp_stallack
+lp_linkerror
+@22
+ucie2_pipe7_bridge.link.state_q[3:0]
+@28
+ucie2_pipe7_bridge.link.link_active
+@100000028
+ucie2_pipe7_bridge.link.hs
+@200
+-==== ingress: flit -> 128b block ====
+@28
+ucie2_pipe7_bridge.ingress.blk_valid
+ucie2_pipe7_bridge.ingress.blk_ready
+@22
+ucie2_pipe7_bridge.ingress.blk_data[127:0]
+@28
+ucie2_pipe7_bridge.ingress.blk_is_os
+@200
+-==== Gen5 framer -> PIPE TX ====
+@420
+ucie2_pipe7_bridge.datapath.framer.fill
+@28
+ucie2_pipe7_bridge.datapath.framer.emit
+@22
+tx_data[79:0]
+@28
+tx_data_valid
+@200
+-==== PIPE RX -> Gen5 deframer ====
+@22
+rx_data[79:0]
+@28
+rx_valid
+@420
+ucie2_pipe7_bridge.datapath.deframer.rfill
+@28
+ucie2_pipe7_bridge.datapath.deframer.pl_cnt[1:0]
+ucie2_pipe7_bridge.datapath.deframer.block_locked
+ucie2_pipe7_bridge.datapath.deframer.sync_error
+@200
+-==== egress: block -> flit ====
+@28
+ucie2_pipe7_bridge.egress.blk_valid
+ucie2_pipe7_bridge.egress.blk_ready
+@22
+ucie2_pipe7_bridge.egress.blk_data[127:0]
+@200
+-==== PIPE MAC control / PHY status ====
+@100000028
+ucie2_pipe7_bridge.ctrl.state[2:0]
+@22
+rate[3:0]
+power_down[3:0]
+@28
+width[2:0]
+rx_width[2:0]
+tx_detect_rx
+@22
+tx_elec_idle[3:0]
+@28
+phy_status
+rx_status[2:0]
+rx_elec_idle
+@200
+-==== bridge status ====
+@29
+block_locked
+sync_error
+in_data_phase
+rx_overflow
+[pattern_trace] 1
+[pattern_trace] 0

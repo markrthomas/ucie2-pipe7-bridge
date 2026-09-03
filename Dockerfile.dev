@@ -18,10 +18,14 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PATH="/opt/venv/bin:${PATH}"
 
+# `gtkwave` (Phase G increment 3) is the waveform viewer for `make wave` and,
+# via its `fst2vcd`, the engine behind the `make wave-check` layout drift-guard.
+# Still apt, still NOT OSS CAD Suite. It is OFF the gate — nothing in
+# lint/pyuvm/fcov/uvm/trace-compare needs it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates curl git g++ make \
       python3 python3-pip python3-venv python3-dev \
-      iverilog verilator \
+      iverilog verilator gtkwave \
     && rm -rf /var/lib/apt/lists/*
 
 # Pin the cocotb 1.x line: cocotb 2.x requires Verilator >= 5.036, but ubuntu's
