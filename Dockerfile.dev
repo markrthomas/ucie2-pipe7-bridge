@@ -19,7 +19,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PATH="/opt/venv/bin:${PATH}"
 
 # `gtkwave` (Phase G increment 3) is the waveform viewer for `make wave` and,
-# via its `fst2vcd`, the engine behind the `make wave-check` layout drift-guard.
+# via its `fst2vcd`, the engine behind the `make wave-check` layout drift-guard
+# and the bundle-time FST -> VCD conversion in `make wave-web` (increment 4 —
+# which needs nothing else: the viewer it inlines is committed in
+# dv/waves/viewer/ and the bundler is stdlib Python).
 # Still apt, still NOT OSS CAD Suite. It is OFF the gate — nothing in
 # lint/pyuvm/fcov/uvm/trace-compare needs it.
 RUN apt-get update && apt-get install -y --no-install-recommends \

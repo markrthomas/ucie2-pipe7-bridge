@@ -26,7 +26,7 @@ RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
 .PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare coverage formal \
-        metrics dashboard eda-playground eda-check waves wave wave-check \
+        metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
         railway-swarm-agents swarm clean
 
@@ -90,6 +90,15 @@ help:
 	@echo "                     dv/waves/*.gtkw must resolve in that target's"
 	@echo "                     real dump hierarchy (via gtkwave's fst2vcd);"
 	@echo "                     skips with exit 0 if fst2vcd is absent"
+	@echo "  make wave-web      bundle that SAME dump + the vendored viewer     [local; OFF-GATE]"
+	@echo "                     into ONE openable build/waves/test_<T>.html"
+	@echo "                     (TEST=roundtrip|smoke|fcov; no desktop app, no"
+	@echo "                      X11 — for the Codespace/browser workflow;"
+	@echo "                      strictly self-contained: inlined CSS+JS + the"
+	@echo "                      VCD as base64, NO CDN and no external fetch,"
+	@echo "                      re-verified on the generated file; the default"
+	@echo "                      view comes from the same dv/waves/*.gtkw layout;"
+	@echo "                      prints [WAVES] wrote … N external ref(s))"
 	@echo "  make railway-prebuild  build the prebuilt verilator-uvm image  [Docker]"
 	@echo "  make railway-template  build the 4GB sandbox toolchain template [Railway]"
 	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
@@ -247,10 +256,16 @@ eda-check:
 #                                    (falling back to dv/waves/default.gtkw)
 #   make wave-check                  resolve every net path in every committed
 #                                    layout against the real dump hierarchy
+#   make wave-web [TEST=roundtrip]   bundle THAT SAME dump + the vendored
+#                                    viewer into ONE openable, offline,
+#                                    no-CDN build/waves/test_<TEST>.html
+#                                    (Phase G increment 4)
 #
 # Dumps are build artifacts and git-ignored; only the curated dv/waves/*.gtkw
-# layouts are committed. Toolchain: Verilator's own FST writer + apt gtkwave
-# (its fst2vcd for the drift-guard) -- NOT OSS CAD Suite.
+# layouts and the vendored dv/waves/viewer/ template are committed. Toolchain:
+# Verilator's own FST writer + apt gtkwave (its fst2vcd for the drift-guard, and
+# for the one-shot FST -> VCD conversion `wave-web` does at bundle time)
+# -- NOT OSS CAD Suite.
 #
 # NOT extended to the SV UVM env (`waves-uvm`) in this increment: that flow needs
 # the from-source UVM Verilator, which neither this host nor the light CI job has,
@@ -288,6 +303,15 @@ wave: waves
 wave-check:
 	$(PYTHON) tools/wave_check.py --layout-dir $(WAVE_LAYOUT_DIR) \
 	  --wave-dir $(WAVE_DIR) $(WAVE_CHECK_ARGS)
+
+# Phase G increment 4 — the browser viewer. Consumes the increment-3 dump above
+# (it will run `make waves` itself if it is missing); adds NO second dump path
+# and touches nothing the gate compiles. Output is one git-ignored HTML file.
+WAVE_VIEWER ?= $(WAVE_LAYOUT_DIR)/viewer/wave_viewer.html
+
+wave-web:
+	$(PYTHON) tools/wave_web.py --test $(TEST) --wave-dir $(WAVE_DIR) \
+	  --layout-dir $(WAVE_LAYOUT_DIR) --viewer $(WAVE_VIEWER) $(WAVE_WEB_ARGS)
 
 # ---- Railway cloud swarm (CI/Railway have the RAM the local box lacks) -------
 # Prebuild the verilator-uvm toolchain image so swarm workers boot hot instead

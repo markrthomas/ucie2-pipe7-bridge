@@ -42,8 +42,9 @@ ARG VERILATOR_PREFIX=/opt/verilator
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONIOENCODING=UTF-8 PYTHONUTF8=1
 # `gtkwave` is here for its CLI `fst2vcd` only -- the engine behind the off-gate
-# `make wave-check` layout drift-guard (Phase G increment 3). This is a headless
-# batch image, so the GUI half is never used; nothing in the gate
+# `make wave-check` layout drift-guard (Phase G increment 3) and the one-shot
+# FST -> VCD conversion `make wave-web` does at bundle time (increment 4). This
+# is a headless batch image, so the GUI half is never used; nothing in the gate
 # (lint/pyuvm/fcov/uvm/trace-compare) touches it. apt, NOT OSS CAD Suite.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       g++ make perl python3 python3-pip ccache z3 yosys git gtkwave \
