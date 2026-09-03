@@ -1,71 +1,64 @@
-Implement **increment 3** of `docs/phase_g_env_enhancements.md` (waves: FST
-generation + GTKWave flow, sibling-style), and nothing beyond it.
+Implement **increment 4** of `docs/phase_g_env_enhancements.md` (waves: a
+self-contained, no-CDN browser waveform viewer), and nothing beyond it. This is
+the LAST Phase G increment.
 
 **Environment notes (read first):**
 - You run on a GitHub runner that cloned ONLY this repo — build from the spec, not
-  by copying any sibling repo (you do not have it). The "sibling-style" flow is
-  described in the increment; reproduce its shape, don't fetch it.
-- **Your GitHub token CANNOT write `.github/workflows/**`.** If you want a
-  `make wave-check` CI step, author it as a fenced YAML block in
-  `docs/phase_g_env_enhancements.md` under a "### CI step — for maintainer to
-  apply" heading. Touch no file under `.github/workflows/`. You MAY edit the
-  `Dockerfile` and `.devcontainer/` directly to add apt `gtkwave`.
-- **No OSS CAD Suite.** Waves use apt `gtkwave` (its `fst2vcd` for the drift-guard)
-  and Verilator's own FST writer. Any browser viewer stays self-contained/no-CDN
-  (that's increment 4 — do NOT start it here).
+  by copying any sibling repo (you do not have it).
+- **Your GitHub token CANNOT write `.github/workflows/**`.** If you want any CI
+  step, author it as a fenced YAML block in `docs/phase_g_env_enhancements.md`
+  under a "### CI step — for maintainer to apply" heading. Touch no file under
+  `.github/workflows/`. You MAY edit the `Dockerfile` and `.devcontainer/`.
+- **No OSS CAD Suite, and the viewer must be strictly self-contained: no CDN, no
+  external fetch, no network at runtime.** Vendor every asset (WASM/JS/CSS/fonts)
+  into the repo; the page must render offline by just opening the file.
 
-1. Read `docs/phase_g_env_enhancements.md` (Hard invariants + increment 3) in
-   full, plus the current test flow you will add dumping to: `dv/pyuvm/`
-   (`Makefile`, `test_roundtrip.py`) and, if you extend it, `dv/uvm/vlt/Makefile`.
-   Understand exactly how the gate builds run so your wave path stays disjoint.
-2. Build **increment 3 only** — ADDITIVE, off-gate, strictly opt-in:
-   - **FST dumping compiled in ONLY under a dedicated `-DWAVES` (or `+WAVES`)
-     define** that the wave targets set and nothing else does (e.g. a
-     `dv/common/*_wave_dump.svh` and/or the cocotb `WAVES=1` path). The gate builds
-     (`lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`) MUST stay wave-free,
-     GTKWave-independent, and **byte-identical** — dumping must never perturb timing
-     or the per-cycle trace.
-   - **`make waves`** — dump the pyuvm round-trip FST (`TEST=<name>` for one test).
-     **`make wave`** — dump + open in GTKWave with the matching
-     `dv/waves/<key>.gtkw` layout, falling back to `dv/waves/default.gtkw`. Extend
-     to the UVM env (`make waves-uvm`/`make wave-uvm`) **only if tractable** — say
-     so honestly if you defer it.
-   - **`dv/waves/`** holds one curated GTKWave layout per debug target — start with
-     `dv/waves/default.gtkw`. Wave dumps themselves go to a build/`sim_build` dir
-     and are git-ignored; commit only the curated `.gtkw` layout(s).
-   - **`make wave-check`** — the drift-guard: resolve every net path in each
-     committed `.gtkw` against that target's real dump hierarchy (via apt
-     `gtkwave`'s `fst2vcd`) and FAIL naming any dead path. Dev-only; never on the
-     gate. Skip cleanly (exit 0) where `gtkwave`/`fst2vcd` is absent.
-   - **Infra:** add apt `gtkwave` to the `Dockerfile` and `.devcontainer/` (edit
-     these directly). Any `make wave-check` CI step is optional + advisory —
-     author it in the doc for the maintainer to apply (token limit). `[WAVES] …`
-     banner from the wave targets.
-3. Additive only. Do NOT fold anything into
-   `lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`/`coverage`/`formal`/`metrics`, do
-   not touch RTL, the trace emitters (`dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv`,
-   `dv/pyuvm/test_roundtrip.py` — beyond a strictly `-DWAVES`/`WAVES`-guarded dump
-   hook that cannot run in the gate path), or the fixed clock/reset/stimulus
-   schedule. Waveform dumping is OFF the gate.
+1. Read `docs/phase_g_env_enhancements.md` (Hard invariants + increment 4) in
+   full, plus increment 3's wave flow which just landed (PR #12): `make waves`,
+   the `-DWAVES`/`WAVES` dump path in `dv/pyuvm/Makefile`, `dv/waves/`,
+   `tools/wave_check.py`. You REUSE those dumps — do NOT add a second dump path.
+2. Build **increment 4 only** — ADDITIVE, off-gate:
+   - **`make wave-web [TEST=<name>]`** bundles a dumped wave (the SAME `-DWAVES`
+     FST/VCD from increment 3) plus a **no-CDN, all-inlined** HTML/JS (or WASM)
+     viewer into a **single openable file** under `build/waves/` (e.g. a vendored
+     Surfer WASM build, or a small self-contained vcd.js viewer — vendor the
+     assets into the repo, never fetch at runtime). Opening that one file in a
+     browser must render the waveform **offline**, with no desktop app / X11 (the
+     maintainer's Codespace/browser workflow).
+   - Reuse increment 3's dump exactly — **do not add a second dump path or perturb
+     the gate**. The gate builds (`lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`)
+     stay wave-free and **byte-identical**.
+   - If a full WASM viewer is too heavy for one increment, ship a **smaller
+     self-contained VCD viewer** instead and **say so honestly** in the docs — a
+     working small viewer beats a half-vendored WASM one.
+   - Vendored assets live in the repo (e.g. `dv/waves/viewer/` or `tools/`); the
+     generated bundle under `build/waves/` is git-ignored. `[WAVES] …` banner.
+3. Additive only. Do NOT fold anything into the gate, do not touch RTL, the trace
+   emitters (`dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv`, `dv/pyuvm/test_roundtrip.py`), or
+   the fixed clock/reset/stimulus schedule. The viewer is a dev/debug artifact,
+   entirely off the gate.
 4. Verify locally what this host can: dispatch dv-env-testers for `lint` and
-   `pyuvm`; run `make lint` (expect `[lint] RTL OK`) and `make pyuvm` (expect the
-   RoundtripTest / 3-way cross-check PASS) and confirm they are **unchanged and
-   equally fast** (prove the `-DWAVES` path did not leak into the gate). Run
-   `make waves` and confirm an FST is produced; run `make wave-check` against the
-   committed `dv/waves/default.gtkw` and confirm it passes (every net path
-   resolves). Capture the `[WAVES]` banners. GTKWave GUI open is not runnable
-   headless — say so; `wave-check` is the automatable proof.
-5. Document it: `README.md` ("Waveform debugging") / `PLAN.md` / `docs` +
-   `make help`; mark increment 3 "LANDED" in `docs/phase_g_env_enhancements.md`
-   with the real banners (and any maintainer-apply CI block), like increments 1-2.
-6. Branch `swarm/phaseG-waves-fst`, commit (co-author + Claude-Session trailers),
-   push, and open a PR titled for Phase G increment 3. A human merges.
-   Increment 4 (browser viewer) is a separate later run — do not start it.
-7. Report: what you added (file:line), how `-DWAVES` keeps dumping off the gate,
-   the `make waves`/`wave-check` `[WAVES]` banners, the local `[lint]`/pyuvm
-   banners (unchanged), the Dockerfile/.devcontainer edits, any CI block authored
-   in docs, and the PR URL.
+   `pyuvm`; run `make lint` (`[lint] RTL OK`) and `make pyuvm` (RoundtripTest /
+   3-way PASS) and confirm they are **unchanged and equally fast**. Run
+   `make waves` then `make wave-web`, and confirm a single self-contained file is
+   produced under `build/waves/`. **Prove no-CDN/offline**: grep the generated
+   file (and any vendored viewer source) for `http`, `https`, `<script src=`,
+   `@import`, `url(`, `fetch(`, `XMLHttpRequest`, `WebSocket` and report the hit
+   counts — external hosts must be **zero** (data: URIs and inline blobs are fine).
+   Capture the `[WAVES]` banner. (Rendering is a browser action — say that's
+   manual; the grep + file-produced check is the automatable proof.)
+5. Document it: `README.md` ("Waveform debugging" → browser viewer) / `PLAN.md` /
+   `docs` + `make help`; mark increment 4 "LANDED" in
+   `docs/phase_g_env_enhancements.md` with the real banners, and note honestly if
+   you shipped the smaller VCD viewer rather than full WASM. This closes Phase G.
+6. Branch `swarm/phaseG-wave-web`, commit (co-author + Claude-Session trailers),
+   push, and open a PR titled for Phase G increment 4. A human merges. There is no
+   increment 5 — do not invent further work.
+7. Report: what you added (file:line), how the viewer stays self-contained/offline
+   (the grep proof, hit counts), that it reuses increment 3's dumps with no gate
+   impact, the `make wave-web` `[WAVES]` banner, the local `[lint]`/pyuvm banners
+   (unchanged), and the PR URL.
 
-Never commit on main. Make the smallest change that satisfies increment 3; if it
+Never commit on main. Make the smallest change that satisfies increment 4; if it
 would require perturbing the sacred gate or the trace emitters, report it instead
 of guessing.
