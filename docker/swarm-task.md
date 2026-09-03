@@ -1,38 +1,41 @@
-Implement **increment 1** of `docs/phase_g_env_enhancements.md` (metrics: capture
-more + trends + regression flags), and nothing beyond it.
+Implement **increment 2** of `docs/phase_g_env_enhancements.md` (metrics:
+auto-commit rows from CI + richer dashboard UX), and nothing beyond it.
 
 **Environment notes (read first):**
 - You run on a GitHub runner that cloned ONLY this repo — build from the spec, not
   by copying any sibling repo (you do not have it).
-- **Your GitHub token CANNOT write `.github/workflows/**`.** This increment needs
-  no workflow change, so do not touch any workflow file.
+- **Your GitHub token CANNOT write `.github/workflows/**`.** This increment's
+  auto-commit half IS a workflow change, so you must NOT write it directly —
+  author it as a fenced YAML block in `docs/phase_g_env_enhancements.md` under a
+  "### CI step — for maintainer to apply" heading. Touch no file under
+  `.github/workflows/`.
 - Metrics are **stdlib-only**: Python 3 `sqlite3` module. No `sqlite3` CLI, no pip
   package, NO CDN in the dashboard.
 
-1. Read BOTH `docs/phase_g_env_enhancements.md` (Hard invariants + increment 1)
-   and the existing increment-4 code — `metrics/schema.sql` (currently
-   `user_version = 1`), `metrics/metrics.db`, `tools/metrics_collect.py`,
+1. Read BOTH `docs/phase_g_env_enhancements.md` (Hard invariants + increment 2)
+   and the current metrics code — `metrics/schema.sql` (now `user_version = 2`
+   after increment 1), `metrics/metrics.db`, `tools/metrics_collect.py`,
    `tools/metrics_dashboard.py` — in full. Honor the honesty rule already in the
    schema (`*_source` per tier: measured | estimated | none; never fabricate a
-   number for a tier that did not run).
-2. Build **increment 1 only** — extend, do not rewrite:
-   - **Schema → `user_version = 2`** with a forward migration that preserves every
-     existing row (add columns / a side table; `metrics_collect.py` migrates an
-     old DB in place on first run). Add: coverage **branch %** (alongside the
-     existing line %), per-job **formal BMC depth**, the round-trip **sim cycle
-     count**, and the collect run's **wall-time + peak RAM** where cheaply
-     available (e.g. `resource.getrusage`). Each new signal carries its own
-     `*_source`.
-   - **Trends**: compute per-metric history across rows of the same `git_branch`
-     (coverage %, key tier durations, formal depth) and render an **inline-SVG**
-     trend line you draw yourself — no chart library, no CDN — in
-     `metrics/dashboard.html`.
-   - **Regression flags**: compare each measured metric to the most recent prior
-     **measured** row on the same branch; flag a regression (coverage dropped, a
-     duration ballooned past a sensible threshold, a tier went pass→fail) with a
-     dashboard badge and a `[METRICS] regressions: N` line from `make metrics`.
-     **Advisory only** — it must never fail `make metrics`/`make dashboard` or any
-     gate.
+   number for a tier that did not run). Increment 1 (trends + regression flags) is
+   LANDED — build ON it, do not rewrite or refold it.
+2. Build **increment 2 only** — extend, do not rewrite:
+   - **Auto-commit from CI (authored in docs, NOT applied):** design a **separate**
+     workflow (or a guarded post-merge job) that, **on push to `main` only**, runs
+     `make metrics` and commits the appended row + regenerated
+     `metrics/dashboard.html` back to `main` with `[skip ci]`, using a
+     `contents: write` token. It must NOT run on PR branches (never race a PR),
+     must be its **own** job so it can never perturb the gate, and — because your
+     token cannot write workflows — is delivered as a fenced YAML block in
+     `docs/phase_g_env_enhancements.md` under "### CI step — for maintainer to
+     apply", not committed under `.github/workflows/`. Make `make metrics` safe to
+     run this way (idempotent append; no-op cleanly when nothing changed).
+   - **Richer dashboard UX:** in the single self-contained **no-CDN**
+     `metrics/dashboard.html` (generator `tools/metrics_dashboard.py`), add
+     **filterable/sortable run history**, **per-tier drill-down**, and
+     **`git_sha` → commit links** (GitHub commit URL). Measured vs
+     estimated/carried-forward must stay **visually distinct**. All JS/CSS inlined;
+     no external fetch.
 3. Additive only. Do NOT fold anything into
    `lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`/`coverage`/`formal`, do not touch
    RTL, the trace emitters (`dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv`,
@@ -41,20 +44,22 @@ more + trends + regression flags), and nothing beyond it.
 4. Verify locally what this host can: dispatch dv-env-testers for `lint` and
    `pyuvm`; run `make lint` (expect `[lint] RTL OK`) and `make pyuvm` (expect the
    RoundtripTest / 3-way cross-check PASS) yourself and confirm they are unchanged.
-   Migrate the committed `metrics.db` to v2, run `make metrics` then `make
-   dashboard`; confirm old rows survive, new signals populate for tiers that ran,
-   trends + any regression badge render, and the dashboard stays self-contained
-   (no CDN/external fetch). Capture the `[METRICS]`/dashboard banners.
-5. Document it: `README.md` / `PLAN.md` / `docs` + `make help`; mark increment 1
-   "LANDED" in `docs/phase_g_env_enhancements.md` with the real banners, like the
-   Phase F increments. Keep measured-vs-estimated honest.
-6. Branch `swarm/phaseG-metrics-trends`, commit (co-author + Claude-Session
-   trailers), push, and open a PR titled for Phase G increment 1. A human merges.
-   Increments 2-4 are separate later runs — do not start them.
-7. Report: what you added (file:line), the schema-v2 migration, the
+   Run `make metrics` then `make dashboard`; confirm old rows survive, the enriched
+   dashboard renders (filter/sort, drill-down, commit links) and stays
+   self-contained (no CDN/external fetch), and the measured-vs-estimated distinction
+   holds. Capture the `[METRICS]`/dashboard banners.
+5. Document it: `README.md` / `PLAN.md` / `docs` + `make help`; mark increment 2
+   "LANDED" in `docs/phase_g_env_enhancements.md` with the real banners and the
+   maintainer-apply CI block, like the Phase F increments and increment 1. Keep
+   measured-vs-estimated honest.
+6. Branch `swarm/phaseG-metrics-autocommit`, commit (co-author + Claude-Session
+   trailers), push, and open a PR titled for Phase G increment 2. A human merges.
+   Increments 3-4 are separate later runs — do not start them.
+7. Report: what you added (file:line), the auto-commit workflow you authored in
+   docs (for the maintainer to apply), the dashboard UX additions, the
    `[METRICS]`/dashboard banners, the local `[lint]`/pyuvm banners (unchanged),
    and the PR URL.
 
-Never commit on main. Make the smallest change that satisfies increment 1; if it
+Never commit on main. Make the smallest change that satisfies increment 2; if it
 would require perturbing the sacred gate or the trace emitters, report it instead
 of guessing.
