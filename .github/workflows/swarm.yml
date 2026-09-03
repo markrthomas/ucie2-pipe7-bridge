@@ -128,4 +128,9 @@ jobs:
           GIT_AUTHOR_EMAIL: ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com
           SWARM_MAX_PARALLEL: ${{ inputs.max_parallel }}
           CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+          # If the entrypoint runs the swarm-manager as a background task, print
+          # mode otherwise TERMINATES it at a 600s wait ceiling (observed on a G4
+          # fire: job exited 0 but pushed nothing). 0 = wait indefinitely; the
+          # job's `timeout-minutes: 60` still bounds the run.
+          CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: "0"
         run: bash docker/swarm.sh "${{ inputs.task }}"
