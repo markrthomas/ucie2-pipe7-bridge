@@ -7,8 +7,13 @@ name: DV swarm
 # See docs/phase_d_swarm.md.
 #
 # Requires repo/environment secrets:
-#   ANTHROPIC_API_KEY        Claude Console key (sk-ant-api…), OR
-#   CLAUDE_CODE_OAUTH_TOKEN  subscription token (sk-ant-oat…, `claude setup-token`)
+#   CLAUDE_CODE_OAUTH_TOKEN  subscription token (sk-ant-oat…, `claude setup-token`).
+#                            This is the ONLY Anthropic credential wired in — the
+#                            metered Console-key (ANTHROPIC_API_KEY) path is
+#                            deliberately NOT plumbed here so a swarm run can never
+#                            bill per-token. provider-env.sh still supports a
+#                            Console key if you re-add the env var, but by default
+#                            the swarm runs on the subscription only.
 #   KIMI_API_KEY             (provider=kimi only)
 #   SWARM_GITHUB_TOKEN       (optional) PAT with contents:write + pull-requests:write
 #                            so the PR it opens DOES trigger CI; falls back to
@@ -111,7 +116,9 @@ jobs:
       - name: Run the DV swarm
         env:
           SWARM_MODEL_PROVIDER: ${{ inputs.provider }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # ANTHROPIC_API_KEY (metered Console-key path) intentionally NOT set —
+          # the swarm authenticates on the subscription OAuth token below, so a run
+          # can never bill per-token. Re-add it only to deliberately go metered.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.SWARM_GITHUB_TOKEN || github.token }}
