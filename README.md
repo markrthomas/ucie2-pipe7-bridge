@@ -80,7 +80,8 @@ make formal         # [FORMAL] <job>: BMC depth N PASSED   (SymbiYosys BMC)
 
 ```bash
 make metrics        # [METRICS] regressions: N (advisory) + row #N appended
-make dashboard      # [DASH] wrote metrics/dashboard.html (+ per-branch trends)
+make dashboard      # [DASH] wrote metrics/dashboard.html (trends, filter/sort,
+                    #        per-tier drill-down, git_sha → commit links)
 ```
 
 ## SV UVM env layout (Cookbook-style)
@@ -214,19 +215,22 @@ make dashboard    # regenerate metrics/dashboard.html from that DB
 
 ```
 [METRICS] lint=pass  pyuvm=pass  fcov=pass  uvm=not-run  trace-compare=not-run  coverage=pass  formal=pass
-[METRICS] signals: cov-branch=75.6%  formal-depth<=24 (3 job(s))  roundtrip-cycles=200  peak-rss=132MiB  wall=31.9s
+[METRICS] signals: cov-branch=75.6%  formal-depth<=24 (3 job(s))  roundtrip-cycles=200  peak-rss=253MiB  wall=54.9s
 [METRICS] regressions: 0
-[METRICS] row #3 appended to metrics/metrics.db (3 row(s), source=measured, sha=b577055, 2026-09-02T21:43:21Z)
-[DASH] wrote metrics/dashboard.html (16307 bytes, 3 of 3 row(s), self-contained: no CDN/JS/external fetch)
-[DASH] trends: branch swarm/phaseG-metrics-trends (2 run(s)), inline SVG; regressions: 0 (advisory)
+[METRICS] row #4 appended to metrics/metrics.db (4 row(s), source=measured, sha=b647b69, 2026-09-03T05:41:07Z)
+[DASH] wrote metrics/dashboard.html (39398 bytes, 4 of 4 row(s), self-contained: inline CSS/JS/SVG, 0 external resource ref(s))
+[DASH] trends: branch swarm/phaseG-metrics-autocommit (1 run(s)), inline SVG; regressions: 0 (advisory)
+[DASH] ux: filter+sort over 4 row(s), 7 tier drill-down(s), commit links -> https://github.com/markrthomas/ucie2-pipe7-bridge
 ```
 
 A small **committed** SQLite store (`metrics/schema.sql` → `metrics/metrics.db`,
-one row per `make metrics`) plus a **single self-contained** HTML dashboard —
-all CSS inlined, trend sparklines drawn as hand-written inline `<svg>`, **no CDN,
-no external fetch, no `<script src>`**. Open `metrics/dashboard.html` by
-double-clicking it; it renders fully offline. Everything uses **stdlib Python**
-(`sqlite3` module — the `sqlite3` CLI is not required).
+one row per `make metrics`) plus a **single self-contained** HTML dashboard — CSS,
+the filter/sort script and the trend sparklines are all inlined (the sparklines
+hand-written `<svg>`), with **no CDN, no external fetch, no `<script src>`, no
+`<link>`, no `@import`, no `url(...)`**. Open `metrics/dashboard.html` by
+double-clicking it; it renders fully offline. The generator re-checks that on
+every run and prints the count (`0 external resource ref(s)`). Everything uses
+**stdlib Python** (`sqlite3` module — the `sqlite3` CLI is not required).
 
 Each row records the ISO-8601 UTC timestamp, git short-sha, branch, dirty flag,
 env, and per tier (`lint`, `pyuvm`, `fcov`, `uvm`, `trace-compare`, `coverage`,
@@ -287,14 +291,47 @@ result is read from the gate's own `run.log` when present, and `trace-compare` i
 recorded `not-run` unless both TB traces are on disk). Per-tier logs are tee'd to
 `build/metrics/<tier>.log` (git-ignored).
 
+### Dashboard UX
+
+The history table is **filterable and sortable**: free-text filter plus `branch` /
+`env` selects and a *measured rows only* checkbox, and click any column heading to
+sort (click again to reverse). Below it, one **drill-down panel per tier** shows
+that tier's own history — status, `*_source`, duration and its own signals
+(round-trip cycles, bins + `fcov %`, identical cycles, line % + branch %, and
+formal's jobs + BMC depth + **per-job** depths). Every `git_sha` links to its
+commit page, resolved once at generation time from `git remote get-url origin`
+(`--repo-url` overrides it, `--repo-url ''` disables the links) — these are plain
+`<a href>` navigation links, never something the page loads. Filtering and sorting
+come from one small inlined `<script>`; with JavaScript off the full table and all
+the drill-downs still render. A carried-forward value stays visibly distinct
+(`*`, an `est` badge, its own colour) and a never-measured one stays `—` — the UX
+never back-fills a number.
+
+### Idempotent append — `--once-per-sha`
+
+`make metrics METRICS_ARGS=--once-per-sha` runs nothing and appends nothing when
+this exact `(git_sha, env)` already has a row **that was written from a clean
+tree**; it prints `[METRICS] up to date: …` and exits 0. That is what makes the
+collector safe to drive from a push-triggered CI job that commits the result
+back — a workflow re-run is a free no-op instead of a duplicate row. A row
+collected with uncommitted changes never counts as that commit's measurement, so
+the check falls through and measures for real. Off by default: running
+`make metrics` twice locally still gives two honest rows.
+
 Both targets are **additive and outside the gate**: they are not run by
 `lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare`/`coverage`/`formal`, they touch no
 RTL, no testbench, no trace emitter and no clock/reset/stimulus schedule — they
-only invoke the existing targets unmodified and parse their banners. The matching
-**post-gate, `continue-on-error`** CI step for `uvm-verilator.yml` (last step,
-after the coverage steps, uploading `dashboard.html` as an artifact) is written
-out in `docs/phase_f_env_enhancements.md` (increment 4) and still needs a
-maintainer with `workflows` token scope to apply it.
+only invoke the existing targets unmodified and parse their banners. Two CI
+pieces are written out for a maintainer with `workflows` token scope to apply:
+the **post-gate, `continue-on-error`** step for `uvm-verilator.yml` in
+`docs/phase_f_env_enhancements.md` (increment 4 — uploads `dashboard.html` as an
+artifact, commits nothing), and a **separate** `metrics-autocommit.yml` workflow
+in `docs/phase_g_env_enhancements.md` (increment 2) that runs on **push to `main`
+only**, uses `--once-per-sha`, and commits the appended row + regenerated
+dashboard back to `main` with `[skip ci]` under `contents: write`. It is its own
+workflow and its own `continue-on-error` job, with no `pull_request` trigger, so
+it can neither race a PR nor perturb the gate; the tiers it cannot run (`uvm`,
+`trace-compare`) stay `not-run`.
 
 ## Bound assertions (SVA)
 
