@@ -267,6 +267,29 @@ predecessor (only the FDI front-end + top are new).
   `uvm`/`trace-compare` = `not-run` (they need the from-source UVM Verilator;
   CI/Railway measure them). Additive and outside the gate; the CI step is
   post-gate and `continue-on-error`, uploading `dashboard.html` as an artifact.
+- [x] **G1. Metrics: capture more + trends + regression flags**
+  (`docs/phase_g_env_enhancements.md` increment 1) — schema
+  **`user_version = 1 → 2`** with a forward migration `make metrics` applies in
+  place (`ALTER TABLE runs ADD COLUMN`, then the `CREATE … IF NOT EXISTS`
+  script): `[METRICS] schema migrated v1 -> v2: +10 column(s), 1 existing row(s)
+  preserved`. Four new signals, **each with its own `*_source`** — coverage
+  **branch %** (new `[COV] branch=NN.N%` banner from `tools/coverage_report.py`,
+  reported alongside and never folded into the gated `line=`), **per-job formal
+  BMC depth** (`formal_depth_max` + the `formal_jobs` side table, from the
+  existing `[FORMAL] <job>: BMC depth N PASSED` lines), the round-trip **sim
+  cycle count** (counted read-only from the trace the `pyuvm` tier wrote — the
+  emitter and its fixed schedule are untouched), and the collect run's **peak
+  RSS** (`resource.getrusage`; wall time stays `total_secs`). **Trends:** the
+  dashboard plots the latest row's **branch only**, **measured points only** (a
+  carried-forward value leaves a gap, never a fake point), as ten hand-drawn
+  inline-SVG sparklines — still no chart library and no CDN. **Regression flags:**
+  each measured signal is compared with the newest prior row on that branch which
+  measured the *same* signal — pass→fail, a coverage/depth/cycle drop, or a
+  runtime that both at least doubled and grew ≥ 5 s — surfaced as
+  `[METRICS] regressions: N` plus a dashboard badge. **Advisory: it never reds
+  `make metrics`/`make dashboard` or any gate**, and a pre-v2 row shows `—`, not
+  a fabricated `0`. Measured on the swarm host: `[COV] branch=75.6% (34/45)`,
+  `formal-depth<=24 (3 job(s))`, `roundtrip-cycles=200`, `peak-rss=132MiB`.
 - [ ] **21+. Coverage closure, randomized waveform suite, error-path directed
   tests, overflow/accumulator guards, deeper/unbounded formal (k-induction on the
   gearbox).** Enumerate once Phase E is green.

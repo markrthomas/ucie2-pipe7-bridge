@@ -42,10 +42,10 @@ flowchart LR
 | `tools/gen_eda_playground.py` | EDA Playground bundle generator + `make eda-check` drift-guard |
 | `dv/common/models/` | shared golden model + trace-format contract |
 | `tools/trace_compare.py` | cycle-accurate PyUVM-vs-UVM trace diff |
-| `tools/coverage_report.py` | `make coverage` line-coverage report (`[COV] line=NN.N%`) |
+| `tools/coverage_report.py` | `make coverage` report (`[COV] line=NN.N%`, `[COV] branch=NN.N%`) |
 | `formal/` | SymbiYosys BMC wrappers + `.sby` jobs (`make formal`, see below) |
 | `tools/formal_run.sh`, `tools/formal_prep.py` | `make formal` driver + yosys-frontend source shim |
-| `metrics/` | committed metrics store (`schema.sql`, `metrics.db`) + generated `dashboard.html` |
+| `metrics/` | committed metrics store (`schema.sql` @ `user_version = 2`, `metrics.db`) + generated `dashboard.html` |
 | `tools/metrics_collect.py`, `tools/metrics_dashboard.py` | `make metrics` row collector, `make dashboard` HTML generator |
 | `docs/` | spec cross-check, verification plan |
 | `.devcontainer/`, `Dockerfile*`, `.railway/` | Codespaces, containers, Railway |
@@ -72,15 +72,15 @@ make trace-compare  # cycle-accurate cross-check          (CI/Railway)
 Two post-gate, additive tiers round it out (never part of the gate):
 
 ```bash
-make coverage       # [COV] line=NN.N%              (advisory RTL line coverage)
+make coverage       # [COV] line=NN.N% + [COV] branch=NN.N%  (advisory RTL coverage)
 make formal         # [FORMAL] <job>: BMC depth N PASSED   (SymbiYosys BMC)
 ```
 
 …plus the post-gate metrics store and its offline dashboard:
 
 ```bash
-make metrics        # [METRICS] row #N appended to metrics/metrics.db
-make dashboard      # [DASH] wrote metrics/dashboard.html
+make metrics        # [METRICS] regressions: N (advisory) + row #N appended
+make dashboard      # [DASH] wrote metrics/dashboard.html (+ per-branch trends)
 ```
 
 ## SV UVM env layout (Cookbook-style)
@@ -127,7 +127,8 @@ gate and cannot run `trace_compare`; the byte-identical cross-check lives in CI.
 ## Line coverage (advisory)
 
 ```bash
-make coverage        # [COV] line=NN.N%  -> build/coverage/{coverage.txt,annotated/}
+make coverage        # [COV] line=NN.N% + [COV] branch=NN.N%
+                     #   -> build/coverage/{coverage.txt,annotated/}
 make coverage COV_MIN=80   # same, but fail below the floor (not enabled yet)
 ```
 
@@ -142,7 +143,10 @@ It is **additive and outside the gate** — it is not run by `lint`/`pyuvm`/`fco
 (after `trace-compare`, `continue-on-error: true`), so it can never perturb the
 byte-identical cross-check.
 
-Measured baseline: **`[COV] line=63.3%` (38/60 RTL lines)**. The uncovered lines
+Measured baseline: **`[COV] line=63.3%` (38/60 RTL lines)** and
+**`[COV] branch=75.6%` (34/45 RTL branch points)**. Only the `line=` number is
+ever gateable (`COV_MIN`); the `branch=` banner is informational and is what
+Phase G increment 1 records as `coverage_branch_pct`. The uncovered lines
 are concentrated in `pipe7_msgbus_master.sv` and `pipe7_mac_ctrl_fsm.sv`, which
 the loopback round-trip does not drive (the `make fcov` tier sweeps those). The
 floor is **advisory (report only)** for now; a `>= NN%` gate is set via `COV_MIN`
@@ -210,8 +214,11 @@ make dashboard    # regenerate metrics/dashboard.html from that DB
 
 ```
 [METRICS] lint=pass  pyuvm=pass  fcov=pass  uvm=not-run  trace-compare=not-run  coverage=pass  formal=pass
-[METRICS] row #1 appended to metrics/metrics.db (1 row(s), source=measured, sha=ac6af48, 2026-09-02T15:06:43Z)
-[DASH] wrote metrics/dashboard.html (9913 bytes, 1 of 1 row(s), self-contained: no CDN/JS/external fetch)
+[METRICS] signals: cov-branch=75.6%  formal-depth<=24 (3 job(s))  roundtrip-cycles=200  peak-rss=132MiB  wall=31.9s
+[METRICS] regressions: 0
+[METRICS] row #3 appended to metrics/metrics.db (3 row(s), source=measured, sha=b577055, 2026-09-02T21:43:21Z)
+[DASH] wrote metrics/dashboard.html (16307 bytes, 3 of 3 row(s), self-contained: no CDN/JS/external fetch)
+[DASH] trends: branch swarm/phaseG-metrics-trends (2 run(s)), inline SVG; regressions: 0 (advisory)
 ```
 
 A small **committed** SQLite store (`metrics/schema.sql` → `metrics/metrics.db`,
@@ -225,6 +232,43 @@ Each row records the ISO-8601 UTC timestamp, git short-sha, branch, dirty flag,
 env, and per tier (`lint`, `pyuvm`, `fcov`, `uvm`, `trace-compare`, `coverage`,
 `formal`) its status, duration and headline number (`[FCOV] bins=H/T`,
 `[COV] line=NN.N%`, `[FORMAL] N/N jobs`, trace cycles).
+
+### Schema v2 — extra signals, trends, regression flags
+
+`metrics/schema.sql` is at **`user_version = 2`**. `make metrics` migrates an
+older store **in place on first run** (`ALTER TABLE runs ADD COLUMN` per missing
+column, then the `CREATE ... IF NOT EXISTS` script) and prints e.g.
+`[METRICS] schema migrated v1 -> v2: +10 column(s), 1 existing row(s) preserved`.
+**Every existing row survives**; the new columns come up `NULL` / `'none'` —
+i.e. "that row never measured this", which is the honest answer.
+
+v2 adds four signals, each with **its own `*_source`** so a number is never
+implied by its tier's roll-up:
+
+| signal | column(s) | where it comes from |
+|--------|-----------|---------------------|
+| coverage **branch %** | `coverage_branch_pct` + `coverage_branch_source` | the new `[COV] branch=NN.N%` banner. Reported **alongside**, never folded into, the gated `[COV] line=` number |
+| per-job **formal BMC depth** | `formal_depth_max` + `formal_depth_source`, and the `formal_jobs` side table (`run_id, job, depth, status`) | the existing `[FORMAL] <job>: BMC depth N PASSED` lines. Only measured runs get side-table rows — a depth is never attributed to a job that did not run |
+| round-trip **sim cycle count** | `roundtrip_cycles` + `roundtrip_cycles_source` | counted read-only from the per-cycle trace the `pyuvm` tier just wrote. Distinct from `trace_cycles`, which is what `trace-compare` diffed across **both** TBs |
+| collect **peak RAM** | `collect_peak_rss_mb` + `collect_source` | `resource.getrusage` `ru_maxrss`, max(self, heaviest child). Wall time stays the pre-existing `total_secs` |
+
+**Trends.** The dashboard's chart row plots the history of the **latest row's
+branch only** (a feature branch is never silently compared against `main`), and
+plots **measured points only** — a carried-forward value leaves a gap rather than
+faking a data point. Ten sparklines: line/branch/functional coverage, formal BMC
+depth, round-trip cycles, `lint`/`pyuvm`/`fcov` runtimes, collect wall time and
+peak RSS. All drawn by `tools/metrics_dashboard.py` as inline `<svg>` polylines —
+still no chart library and no CDN.
+
+**Regression flags — advisory, never a gate.** Each measured signal is compared
+with the most recent prior row on the same branch that measured *that same
+signal*. A flag is raised when a tier goes **pass→fail**, when
+coverage/BMC-depth/cycle-count **drops**, or when a tier runtime **both at least
+doubled and grew ≥ 5 s** (so a 0.09 s → 0.20 s `lint` blip is never reported).
+The count is printed as `[METRICS] regressions: N`, stored on the row
+(`regressions`, `regression_notes`) and badged in the dashboard. It **never**
+changes the exit status of `make metrics`/`make dashboard`, and no gate reads it.
+Rows written before v2 show `—` / "regressions n/a" rather than a fabricated `0`.
 
 **Measured vs estimated is never blurred.** Every tier carries its own `*_source`:
 

@@ -6,6 +6,7 @@ Phase F increment 2 (see ``docs/phase_f_env_enhancements.md``). Consumes the
 (``make coverage``) and prints a per-file table plus the banner::
 
     [COV] line=NN.N%
+    [COV] branch=NN.N%      (informational, not gated; omitted if no such points)
 
 Verilator's ``--coverage-line`` emits both ``v_line`` and ``v_branch`` points,
 and one point *per instance* of a module. This tool reports **line** coverage
@@ -126,7 +127,7 @@ def render(dat_path, rtl_dir, uncovered_limit):
             out.append(f"  {os.path.basename(src)}:{lineno}")
         if len(uncovered) > uncovered_limit:
             out.append(f"  ... {len(uncovered) - uncovered_limit} more")
-    return "\n".join(out), covered, total
+    return "\n".join(out), covered, total, br_covered, br_total
 
 
 def main(argv=None):
@@ -143,7 +144,8 @@ def main(argv=None):
         print(f"[COV] ERROR: no coverage datafile at {args.datafile}", file=sys.stderr)
         return 2
 
-    text, covered, total = render(args.datafile, args.rtl_dir, args.uncovered_limit)
+    text, covered, total, br_covered, br_total = render(
+        args.datafile, args.rtl_dir, args.uncovered_limit)
     if total == 0:
         print("[COV] ERROR: no RTL line-coverage points found "
               f"(rtl-dir={args.rtl_dir})", file=sys.stderr)
@@ -157,6 +159,14 @@ def main(argv=None):
 
     value = pct(covered, total)
     print(f"[COV] line={value:.1f}% ({covered}/{total} RTL lines)")
+    # Branch points are reported ALONGSIDE, never folded into the gated line %.
+    # Phase G increment 1 records this as `coverage_branch_pct` in the metrics
+    # store; omitted entirely when the datafile carries no branch points, so a
+    # missing signal is never rendered as 0%.
+    if br_total:
+        print(f"[COV] branch={pct(br_covered, br_total):.1f}% "
+              f"({br_covered}/{br_total} RTL branch points, informational — "
+              f"not gated)")
     if args.min is None:
         print("[COV] floor: advisory (report only) — no threshold enforced")
         return 0
