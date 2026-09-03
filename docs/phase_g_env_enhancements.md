@@ -254,11 +254,11 @@ filters, reset, and ascending/descending numeric + text sort all behave, and a
 never-measured `—` sorts as empty. The carried-forward rendering was re-checked
 by generating a dashboard from a **throwaway** carry-forward store.
 
-### CI step — for maintainer to apply
+### CI step — APPLIED (`.github/workflows/metrics-autocommit.yml`)
 
-As in Phase F increments 3–4, the swarm's GitHub App token cannot write
-`.github/workflows/**`, so this is authored here for the maintainer to apply over
-HTTPS with `workflows` scope. It is a **new, separate workflow file**,
+The swarm's token cannot write `.github/workflows/**`, so this was authored here
+and **applied by the maintainer over HTTPS** (the block below is the source of
+truth for that committed file). It is a **new, separate workflow file**,
 `.github/workflows/metrics-autocommit.yml` — not a step bolted onto `ci.yml` or
 `uvm-verilator.yml`:
 

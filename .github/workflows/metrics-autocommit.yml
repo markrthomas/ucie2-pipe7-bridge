@@ -1,0 +1,114 @@
+name: DV metrics auto-commit
+
+# Phase G increment 2. ADDITIVE, POST-GATE, ADVISORY. This workflow is entirely
+# separate from `lint` (ci.yml) and `uvm-verilator` (uvm-verilator.yml): it
+# shares no job with them, runs after the fact on the pushed commit, and cannot
+# perturb the byte-identical per-cycle cross-check. It runs `make metrics` +
+# `make dashboard` (both outside the gate by construction) and commits the
+# appended row + regenerated dashboard back to `main`, so the committed store
+# grows on its own instead of only when a maintainer remembers to run it.
+#
+# `main` ONLY -- there is deliberately no `pull_request` trigger, so this can
+# never race a PR branch or write to one.
+
+on:
+  push:
+    branches: [ main ]
+
+# Never let two pushes fight over metrics/metrics.db. Queue, don't cancel: a
+# cancelled run would just skip a row, but a cancelled PUSH would lose it.
+concurrency:
+  group: dv-metrics-autocommit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  metrics-autocommit:
+    runs-on: ubuntu-latest
+    # Own repo only (not forks), and never react to the commit we ourselves
+    # push. `[skip ci]` already prevents that trigger; this is belt and braces.
+    if: >-
+      github.repository == 'markrthomas/ucie2-pipe7-bridge' &&
+      !contains(github.event.head_commit.message, '[skip ci]')
+    # ADVISORY: a metrics hiccup must never show up as a red check on `main`.
+    continue-on-error: true
+    permissions:
+      contents: write          # the only elevated scope, used only to push
+    steps:
+      # Check out the BRANCH (not the detached pushed sha) so we can commit back.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      # Light toolchain only -- NOT OSS CAD Suite, and deliberately NOT the
+      # from-source UVM Verilator: this job measures the cheap tiers. `uvm` and
+      # `trace-compare` are recorded 'not-run' (never 'fail', never guessed);
+      # uvm-verilator.yml is what measures them.
+      - name: Install the light DV toolchain (apt + pinned pip)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            verilator iverilog yosys z3
+          python3 -m pip install --upgrade pip
+          python3 -m pip install \
+            "cocotb==1.9.2" "cocotb_coverage==1.2.0" "pyuvm==4.0.1" click
+          git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby
+          sudo make -C /tmp/sby install
+          rm -rf /tmp/sby
+
+      # Idempotent: --once-per-sha runs nothing and appends nothing when this
+      # (sha, env) already has a row from a clean tree, so re-running this
+      # workflow is a free no-op rather than a duplicate row.
+      - name: Collect the DV metrics row + regenerate the dashboard
+        run: |
+          set -euo pipefail
+          make metrics \
+            METRICS_TIERS=lint,pyuvm,fcov,coverage,formal \
+            METRICS_ARGS="--env ci --once-per-sha \
+              --note auto-commit-from-push-to-main \
+              --make-arg PYTHON3=$(command -v python3)"
+          make dashboard
+
+      # Commit ONLY the two metrics/ files, and only if they actually changed.
+      # `[skip ci]` keeps this commit from re-triggering any workflow.
+      - name: Commit the row + dashboard back to main
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- metrics/metrics.db metrics/dashboard.html; then
+            echo "[METRICS-CI] nothing changed -- no commit, no push"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- metrics/metrics.db metrics/dashboard.html
+          git commit \
+            -m "metrics: auto-append DV row for ${GITHUB_SHA:0:7} [skip ci]" \
+            -m "Appended by .github/workflows/metrics-autocommit.yml (Phase G increment 2). Post-gate and advisory; only metrics/ changes." \
+            -m "Tiers this job cannot run (uvm, trace-compare need the from-source UVM Verilator) are recorded 'not-run', never 'fail' -- no number is invented for them."
+          for attempt in 1 2 3; do
+            if git pull --rebase --autostash origin "$GITHUB_REF_NAME" \
+               && git push origin "HEAD:$GITHUB_REF_NAME"; then
+              echo "[METRICS-CI] pushed the metrics row to $GITHUB_REF_NAME"
+              exit 0
+            fi
+            echo "[METRICS-CI] push attempt $attempt failed, retrying"
+            sleep $((5 * attempt))
+          done
+          echo "[METRICS-CI] could not push after 3 attempts (advisory, not fatal)"
+
+      - name: Upload the metrics dashboard
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: dv-metrics-dashboard-main
+          path: |
+            metrics/dashboard.html
+            metrics/metrics.db
+          retention-days: 14
+          if-no-files-found: ignore
