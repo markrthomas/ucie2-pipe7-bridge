@@ -7,12 +7,18 @@ obj_dir_*/
 # DV build/output
 dv/pyuvm/sim_build/
 dv/pyuvm/cov_build/
+dv/pyuvm/wave_build/
 dv/pyuvm/build/
 dv/pyuvm/results.xml
 dv/pyuvm/coverage.dat
 
 # Coverage (make coverage)
 build/coverage/
+
+# Waves (make waves / make wave) -- the DUMPS are build artifacts. The curated
+# GTKWave layouts in dv/waves/*.gtkw are deliberately COMMITTED (that is the
+# whole point of `make wave-check`) and must NOT be ignored.
+build/waves/
 
 # Formal (make formal) -- generated yosys-readable RTL copies + sby work dirs
 build/formal/

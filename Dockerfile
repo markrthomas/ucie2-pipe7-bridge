@@ -41,8 +41,12 @@ FROM ubuntu:24.04 AS uvm
 ARG VERILATOR_PREFIX=/opt/verilator
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONIOENCODING=UTF-8 PYTHONUTF8=1
+# `gtkwave` is here for its CLI `fst2vcd` only -- the engine behind the off-gate
+# `make wave-check` layout drift-guard (Phase G increment 3). This is a headless
+# batch image, so the GUI half is never used; nothing in the gate
+# (lint/pyuvm/fcov/uvm/trace-compare) touches it. apt, NOT OSS CAD Suite.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      g++ make perl python3 python3-pip ccache z3 yosys git \
+      g++ make perl python3 python3-pip ccache z3 yosys git gtkwave \
       libgoogle-perftools-dev zlib1g zlib1g-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 # SymbiYosys (github.com/YosysHQ/sby) is pure Python -- `make install` just
@@ -71,6 +75,7 @@ RUN "${VERILATOR}" --version \
     && test -f "${UVM_HOME}/v2020_3_1/dpi/uvm_dpi.cc" \
     && z3 --version \
     && yosys -V \
+    && command -v fst2vcd >/dev/null \
     && sby --help >/dev/null \
     && python3 -c "import click"
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

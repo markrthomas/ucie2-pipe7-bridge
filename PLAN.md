@@ -315,6 +315,28 @@ predecessor (only the FDI front-end + top are new).
   and drill-downs still render. Measured vs estimated stays visually distinct
   (`*`, `est` badge, own colour); `—` is never back-filled. Additive and
   post-gate; nothing in the gate reads or runs any of it.
+- [x] **G3. Waves: FST generation + GTKWave flow**
+  (`docs/phase_g_env_enhancements.md` increment 3) — `make waves [TEST=<name>]`
+  dumps the PyUVM round-trip to `build/waves/test_<TEST>.fst` with Verilator's
+  own FST writer; `make wave` also opens it in **apt GTKWave** with
+  `dv/waves/<TEST>.gtkw`, falling back to the curated `dv/waves/default.gtkw`
+  (50 net paths, grouped FDI in → link FSM → ingress → Gen5 framer → PIPE TX →
+  loopback → PIPE RX → deframer → egress → FDI out, plus MAC control + status).
+  Dumping is compiled in **only** by the `ifeq ($(WAVES),1)` block in
+  `dv/pyuvm/Makefile` (`-DWAVES --trace-fst --trace-structs` in `COMPILE_ARGS`,
+  `--trace --trace-file` in `SIM_ARGS`, its own `wave_build/` dir), which only
+  those targets set — the gate still builds with `VM_TRACE=0`, writes no dump,
+  needs no GTKWave and emits a byte-identical per-cycle trace. This increment
+  also **removed a pre-existing wave leak**: `--trace` sat in the unconditional
+  `EXTRA_ARGS`, which cocotb appends to the run command as well, so the gate had
+  been writing a ~170 KB `dv/pyuvm/dump.vcd` on every run. `make wave-check`
+  (`tools/wave_check.py`, stdlib) is the dev-only drift-guard: it reads the real
+  dump hierarchy with GTKWave's `fst2vcd` and fails naming `file:line` for any
+  dead net path or moved bit range, and **skips with exit 0** where `fst2vcd` is
+  absent. Layouts are committed, dumps are git-ignored. apt `gtkwave` added to
+  `Dockerfile.dev` (the `.devcontainer` image) and the root `Dockerfile` — still
+  **not** OSS CAD Suite. `make waves-uvm` is deferred (no UVM-capable Verilator
+  on this host or the light CI job, so it could not be built or proven).
 - [ ] **21+. Coverage closure, randomized waveform suite, error-path directed
   tests, overflow/accumulator guards, deeper/unbounded formal (k-induction on the
   gearbox).** Enumerate once Phase E is green.

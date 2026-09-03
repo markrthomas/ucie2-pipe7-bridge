@@ -26,7 +26,7 @@ RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
 .PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare coverage formal \
-        metrics dashboard eda-playground eda-check \
+        metrics dashboard eda-playground eda-check waves wave wave-check \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
         railway-swarm-agents swarm clean
 
@@ -79,6 +79,17 @@ help:
 	@echo "                     (dv/uvm/eda_playground/: design.sv + testbench.sv"
 	@echo "                      + all-in-one; flattens the UVM pkg includes)"
 	@echo "  make eda-check     fail if the committed EDA bundle is stale       [local/CI; off-gate]"
+	@echo "  make waves         dump an FST of the PyUVM round-trip             [local; OFF-GATE]"
+	@echo "                     (TEST=roundtrip|smoke|fcov; WAVES=1 build in"
+	@echo "                      dv/pyuvm/wave_build -> build/waves/test_<T>.fst;"
+	@echo "                      prints [WAVES] wrote …)"
+	@echo "  make wave          make waves, then open it in GTKWave             [local; OFF-GATE]"
+	@echo "                     (layout dv/waves/<TEST>.gtkw, else default.gtkw;"
+	@echo "                      needs a display — apt gtkwave, not OSS CAD Suite)"
+	@echo "  make wave-check    drift-guard: every net path in every committed  [local; OFF-GATE]"
+	@echo "                     dv/waves/*.gtkw must resolve in that target's"
+	@echo "                     real dump hierarchy (via gtkwave's fst2vcd);"
+	@echo "                     skips with exit 0 if fst2vcd is absent"
 	@echo "  make railway-prebuild  build the prebuilt verilator-uvm image  [Docker]"
 	@echo "  make railway-template  build the 4GB sandbox toolchain template [Railway]"
 	@echo "  make railway-swarm-probe   one cheap sandbox: RAM/os report    [dry-run; SWARM_APPLY=1]"
@@ -222,6 +233,62 @@ eda-playground:
 eda-check:
 	$(PYTHON) tools/gen_eda_playground.py --check
 
+# ---- Waveforms: FST dump + GTKWave (Phase G increment 3) --------------------
+# ADDITIVE, OFF-GATE and STRICTLY OPT-IN. Nothing below is reachable from
+# lint/pyuvm/fcov/uvm/trace-compare/coverage/formal/metrics: FST dumping is
+# compiled in only under the dedicated `-DWAVES` define (plus Verilator's
+# `--trace-fst`), which ONLY these targets set, and it builds into its own
+# dv/pyuvm/wave_build/ so the gate's sim_build objects are never instrumented.
+# The gate therefore stays wave-free, GTKWave-independent and byte-identical.
+#
+#   make waves [TEST=roundtrip]      dump build/waves/test_<TEST>.fst
+#   make wave  [TEST=roundtrip]      dump, then open it in GTKWave with the
+#                                    curated dv/waves/<TEST>.gtkw layout
+#                                    (falling back to dv/waves/default.gtkw)
+#   make wave-check                  resolve every net path in every committed
+#                                    layout against the real dump hierarchy
+#
+# Dumps are build artifacts and git-ignored; only the curated dv/waves/*.gtkw
+# layouts are committed. Toolchain: Verilator's own FST writer + apt gtkwave
+# (its fst2vcd for the drift-guard) -- NOT OSS CAD Suite.
+#
+# NOT extended to the SV UVM env (`waves-uvm`) in this increment: that flow needs
+# the from-source UVM Verilator, which neither this host nor the light CI job has,
+# so a `$dumpfile` hook there could not be run or proven here. See
+# docs/phase_g_env_enhancements.md (increment 3, "Deferred").
+TEST            ?= roundtrip
+WAVE_DIR        ?= build/waves
+WAVE_LAYOUT_DIR ?= dv/waves
+GTKWAVE         ?= gtkwave
+
+WAVE_MODULE := test_$(TEST)
+WAVE_FST    := $(WAVE_DIR)/$(WAVE_MODULE).fst
+# Per-target layout if one is curated, else the shared default.
+WAVE_LAYOUT := $(if $(wildcard $(WAVE_LAYOUT_DIR)/$(TEST).gtkw),\
+                 $(WAVE_LAYOUT_DIR)/$(TEST).gtkw,$(WAVE_LAYOUT_DIR)/default.gtkw)
+
+waves:
+	@mkdir -p $(WAVE_DIR)
+	$(MAKE) -C dv/pyuvm WAVES=1 SIM=verilator MODULE=$(WAVE_MODULE) \
+	  WAVE_DIR=$(abspath $(WAVE_DIR))
+	@if [ ! -s $(WAVE_FST) ]; then \
+	  echo "[WAVES] ERROR: the WAVES=1 run produced no FST at $(WAVE_FST)"; exit 1; fi
+	@echo "[WAVES] wrote $(WAVE_FST) ($$(wc -c < $(WAVE_FST)) bytes) \
+from dv/pyuvm MODULE=$(WAVE_MODULE) (Verilator FST, -DWAVES build)"
+	@echo "[WAVES] open with: make wave TEST=$(TEST)   layout: $(WAVE_LAYOUT)"
+
+wave: waves
+	@if ! command -v $(GTKWAVE) >/dev/null 2>&1; then \
+	  echo "[WAVES] gtkwave not found on PATH — install it (apt-get install -y gtkwave)"; \
+	  echo "[WAVES] the dump is ready at $(WAVE_FST); open it wherever you like"; \
+	  exit 1; fi
+	@echo "[WAVES] opening $(WAVE_FST) in GTKWave with layout $(WAVE_LAYOUT)"
+	@exec $(GTKWAVE) --save=$(WAVE_LAYOUT) $(WAVE_FST)
+
+wave-check:
+	$(PYTHON) tools/wave_check.py --layout-dir $(WAVE_LAYOUT_DIR) \
+	  --wave-dir $(WAVE_DIR) $(WAVE_CHECK_ARGS)
+
 # ---- Railway cloud swarm (CI/Railway have the RAM the local box lacks) -------
 # Prebuild the verilator-uvm toolchain image so swarm workers boot hot instead
 # of building Verilator from source. `docker` here is podman-shim-friendly.
@@ -276,4 +343,4 @@ SWARM_ENV   ?=
 clean:
 	-$(MAKE) -C dv/pyuvm clean
 	-$(MAKE) -C dv/uvm/vlt clean
-	rm -rf obj_dir report $(COV_DIR) build/formal
+	rm -rf obj_dir report $(COV_DIR) build/formal $(WAVE_DIR)

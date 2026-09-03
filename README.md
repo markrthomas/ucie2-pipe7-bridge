@@ -43,6 +43,8 @@ flowchart LR
 | `dv/common/models/` | shared golden model + trace-format contract |
 | `tools/trace_compare.py` | cycle-accurate PyUVM-vs-UVM trace diff |
 | `tools/coverage_report.py` | `make coverage` report (`[COV] line=NN.N%`, `[COV] branch=NN.N%`) |
+| `dv/waves/` | curated GTKWave layouts (`default.gtkw`) — **committed**; the dumps are not |
+| `tools/wave_check.py` | `make wave-check` layout drift-guard (`fst2vcd`-resolved net paths) |
 | `formal/` | SymbiYosys BMC wrappers + `.sby` jobs (`make formal`, see below) |
 | `tools/formal_run.sh`, `tools/formal_prep.py` | `make formal` driver + yosys-frontend source shim |
 | `metrics/` | committed metrics store (`schema.sql` @ `user_version = 2`, `metrics.db`) + generated `dashboard.html` |
@@ -74,6 +76,14 @@ Two post-gate, additive tiers round it out (never part of the gate):
 ```bash
 make coverage       # [COV] line=NN.N% + [COV] branch=NN.N%  (advisory RTL coverage)
 make formal         # [FORMAL] <job>: BMC depth N PASSED   (SymbiYosys BMC)
+```
+
+…and, off the gate entirely, waveforms (see "Waveform debugging" below):
+
+```bash
+make waves          # [WAVES] wrote build/waves/test_roundtrip.fst
+make wave           # same, then open it in GTKWave with dv/waves/default.gtkw
+make wave-check     # [WAVES] wave-check: … every path resolves
 ```
 
 …plus the post-gate metrics store and its offline dashboard:
@@ -159,6 +169,82 @@ once the baseline is agreed — deliberately *not* enabled in this change.
 > that Verilator's `verilated.mk` hardcodes when the two are different versions.
 > Work around it with `make pyuvm PYTHON3="$(command -v python3)"` (same for
 > `make coverage`).
+
+## Waveform debugging (off-gate)
+
+```bash
+make waves                  # dump build/waves/test_roundtrip.fst
+make waves TEST=smoke       # …of a different test (dv/pyuvm/test_<TEST>.py)
+make wave                   # dump, then open it in GTKWave with the layout
+make wave-check             # drift-guard: every committed layout still resolves
+```
+
+```
+[WAVES] wrote build/waves/test_roundtrip.fst (9597 bytes) from dv/pyuvm MODULE=test_roundtrip (Verilator FST, -DWAVES build)
+[WAVES] open with: make wave TEST=roundtrip   layout: dv/waves/default.gtkw
+[WAVES] wave-check: 1 layout(s), 50 net path(s), 1 dump(s) — every path resolves (hierarchy read with fst2vcd)
+```
+
+**Dumping is strictly opt-in and cannot reach the gate.** FST tracing is compiled
+in only by the `ifeq ($(WAVES),1)` block in `dv/pyuvm/Makefile`, which only the
+`waves`/`wave`/`wave-check` targets set. That block adds `-DWAVES --trace-fst
+--trace-structs` to `COMPILE_ARGS` (compile only) and `--trace --trace-file …` to
+`SIM_ARGS` (run only), and redirects the build into its own `dv/pyuvm/wave_build/`
+— the same trick `RTL_COVERAGE=1` uses for `cov_build/`. A gate build therefore
+still compiles with `VM_TRACE=0`, writes no dump, needs no GTKWave, and emits a
+**byte-identical** `dv/pyuvm/build/bridge.trace`.
+
+> Phase G increment 3 also **removed a wave leak from the gate**: `--trace` used
+> to sit in the unconditional Verilator `EXTRA_ARGS`, and cocotb appends
+> `EXTRA_ARGS` to *both* the verilate command *and* the simulation command — so
+> every `make pyuvm` / `make fcov` silently compiled the VCD tracer in and wrote a
+> ~170 KB `dv/pyuvm/dump.vcd`. The gate is wave-free again (and a little faster).
+
+`dv/waves/` holds one **curated** GTKWave layout per debug target — start from
+`dv/waves/default.gtkw`, which groups the round-trip end to end (FDI in → link
+FSM → ingress → Gen5 framer → PIPE TX → loopback → PIPE RX → deframer → egress →
+FDI out, plus MAC control and bridge status). `make wave` picks
+`dv/waves/<TEST>.gtkw` if it exists and falls back to `default.gtkw`. The layouts
+are committed; the **dumps** (`build/waves/*.fst`, `dv/pyuvm/wave_build/`) are
+git-ignored build artifacts.
+
+`make wave-check` is the drift-guard that keeps a curated layout from rotting: it
+builds the target's dump if needed, reads that dump's **real** hierarchy with apt
+GTKWave's `fst2vcd`, and fails naming `file:line` for any net path that no longer
+resolves (or whose bit range moved). It is **dev-only and never on the gate**, and
+it **skips with exit 0** — rather than claiming a pass — where `fst2vcd` is not
+installed.
+
+```
+[WAVES] dv/waves/default.gtkw:126: dead net path 'ucie2_pipe7_bridge.link.state_qq[3:0]' — not in build/waves/test_roundtrip.fst
+[WAVES] dv/waves/default.gtkw:127: 'tx_data' exists but its range [63:0] does not — dump has ['[79:0]']
+[WAVES] wave-check FAILED: 2 dead path(s) in 1 layout(s) — re-curate them against a fresh `make waves` dump
+```
+
+Note that cocotb's Verilator main constructs the model as `new Vtop("")`, so the
+dump's root scope is **unnamed**: a top-level port is `pclk`, not `TOP.pclk`, and
+DUT internals are `ucie2_pipe7_bridge.<inst>.<net>`. `tools/wave_check.py` builds
+paths the same way, which is why the committed layout and the checker agree.
+
+To **re-curate** a layout, let GTKWave itself write it (so the names are exactly
+what GTKWave resolves) — headless if you have no display:
+
+```bash
+make waves
+xvfb-run -a gtkwave -a dv/waves/default.gtkw -S my_layout.tcl \
+  build/waves/test_roundtrip.fst   # tcl: addSignalsFromList + /File/Write_Save_File
+make wave-check                    # then re-prove it
+```
+
+Toolchain: Verilator's own FST writer + **apt `gtkwave`** (`Dockerfile.dev`, which
+`.devcontainer/` builds, and the root `Dockerfile` for `fst2vcd`) — **not** OSS CAD
+Suite. Opening the GUI needs a display; `make wave-check` is the automatable half.
+
+**Not yet extended to the SV UVM env.** `make waves-uvm` / `make wave-uvm` are
+deliberately deferred: that flow needs the from-source UVM Verilator, which
+neither this host nor the light CI job has, so a `$dumpfile` hook there could not
+be built, run or proven. See `docs/phase_g_env_enhancements.md` (increment 3,
+"Deferred").
 
 ## Formal (SymbiYosys BMC, post-gate)
 
