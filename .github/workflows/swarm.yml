@@ -31,6 +31,25 @@ on:
         default: "anthropic"
         type: choice
         options: [ anthropic, kimi ]
+  # Callable as a reusable workflow so a scheduler (e.g. a one-shot timed fire in a
+  # fresh subscription window) can invoke this exact swarm with `secrets: inherit`
+  # — no cross-workflow dispatch token needed. Same inputs; `type: choice` becomes
+  # `string` here (workflow_call has no choice type). The `inputs` context below
+  # resolves for both triggers.
+  workflow_call:
+    inputs:
+      task:
+        required: false
+        type: string
+        default: ""
+      max_parallel:
+        required: false
+        type: string
+        default: ""
+      provider:
+        required: false
+        type: string
+        default: "anthropic"
 
 permissions:
   contents: write
