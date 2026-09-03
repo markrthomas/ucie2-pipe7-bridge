@@ -290,6 +290,31 @@ predecessor (only the FDI front-end + top are new).
   `make metrics`/`make dashboard` or any gate**, and a pre-v2 row shows `—`, not
   a fabricated `0`. Measured on the swarm host: `[COV] branch=75.6% (34/45)`,
   `formal-depth<=24 (3 job(s))`, `roundtrip-cycles=200`, `peak-rss=132MiB`.
+- [x] **G2. Metrics: auto-commit rows from CI + richer dashboard UX**
+  (`docs/phase_g_env_enhancements.md` increment 2) — **`--once-per-sha`** makes
+  `make metrics` idempotent: on a **clean** tree whose `(git_sha, env)` already
+  has a row it runs nothing, appends nothing and exits 0
+  (`[METRICS] up to date: …`), checked *before* any tier starts. A row collected
+  from a dirty tree never counts as that commit's measurement. That is what makes
+  the collector safe to drive from CI and commit back; the matching **separate**
+  `metrics-autocommit.yml` workflow (push to **`main` only**, no `pull_request`
+  trigger, its own `continue-on-error` job, `concurrency`-serialized,
+  `contents: write`, commit message carries `[skip ci]`) is authored in
+  `docs/phase_g_env_enhancements.md` for a maintainer with `workflows` token
+  scope to apply. It carries only the light toolchain, so `uvm`/`trace-compare`
+  are recorded **`not-run`, never `fail`**, and `--carry-forward` is not used.
+  **Dashboard UX:** a filterable/sortable run history (free text + branch/env/
+  measured-only, click-to-sort on every column via a per-cell `data-v` sort key,
+  so a never-measured `—` sorts as empty and not as `0`), one `<details>`
+  drill-down per tier with its own signals and `*_source` (including the per-job
+  formal BMC depths), and `git_sha` → commit links resolved once at generation
+  time from `git remote get-url origin`. Still **one self-contained file**: CSS,
+  a dependency-free ES5 `<script>` and the SVG sparklines are all inlined, and
+  `external_refs()` re-verifies on every run that nothing would load an external
+  asset — `[DASH] … 0 external resource ref(s)`. With JavaScript off the table
+  and drill-downs still render. Measured vs estimated stays visually distinct
+  (`*`, `est` badge, own colour); `—` is never back-filled. Additive and
+  post-gate; nothing in the gate reads or runs any of it.
 - [ ] **21+. Coverage closure, randomized waveform suite, error-path directed
   tests, overflow/accumulator guards, deeper/unbounded formal (k-induction on the
   gearbox).** Enumerate once Phase E is green.

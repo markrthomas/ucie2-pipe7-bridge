@@ -61,12 +61,20 @@ help:
 	@echo "                      round-trip sim cycles and collect peak RSS;"
 	@echo "                      prints [METRICS] signals: …, [METRICS] regressions: N"
 	@echo "                      (ADVISORY — never fails this or any other target)"
-	@echo "                      and [METRICS] row #N appended to …)"
+	@echo "                      and [METRICS] row #N appended to …;"
+	@echo "                      METRICS_ARGS=--once-per-sha makes it idempotent —"
+	@echo "                      a clean tree whose sha+env already has a row runs"
+	@echo "                      nothing and appends nothing, so a push-triggered"
+	@echo "                      CI job may commit the result back safely)"
 	@echo "  make dashboard     regenerate metrics/dashboard.html from the DB [local/CI; post-gate]"
-	@echo "                     (single self-contained file: inlined CSS +"
-	@echo "                      hand-drawn SVG, no CDN; per-branch trend charts"
-	@echo "                      over MEASURED points only + a regression badge;"
-	@echo "                      prints [DASH] wrote … and [DASH] trends: …)"
+	@echo "                     (single self-contained file: inlined CSS + JS +"
+	@echo "                      hand-drawn SVG, NO CDN and no external fetch;"
+	@echo "                      per-branch trend charts over MEASURED points only,"
+	@echo "                      a regression badge, a filterable/sortable run"
+	@echo "                      history, one drill-down panel per tier and"
+	@echo "                      git_sha → commit links (plain <a href>);"
+	@echo "                      prints [DASH] wrote …, [DASH] trends: …,"
+	@echo "                      [DASH] ux: …)"
 	@echo "  make eda-playground regenerate the EDA Playground bundle          [local; off-gate]"
 	@echo "                     (dv/uvm/eda_playground/: design.sv + testbench.sv"
 	@echo "                      + all-in-one; flattens the UVM pkg includes)"
@@ -152,7 +160,7 @@ coverage:
 formal:
 	bash tools/formal_run.sh $(FORMAL_JOBS)
 
-# ---- DV metrics + dashboard (Phase F inc 4; Phase G inc 1) ------------------
+# ---- DV metrics + dashboard (Phase F inc 4; Phase G inc 1-2) ----------------
 # ADDITIVE and OUTSIDE the gate. `metrics` runs the EXISTING tier targets
 # unmodified (or reads the log the gate already wrote, e.g. dv/uvm/vlt/obj/
 # run.log for `uvm`) and appends ONE row to the committed SQLite store; it
@@ -174,6 +182,17 @@ formal:
 # *_source -- and prints `[METRICS] regressions: N` from a comparison against
 # the newest prior MEASURED row on the same branch. That count is ADVISORY: it
 # never changes the exit status of this target and no gate reads it.
+#
+# Phase G increment 2: `metrics METRICS_ARGS=--once-per-sha` is IDEMPOTENT — on a
+# clean tree whose (git_sha, env) already has a row it runs nothing, appends
+# nothing and exits 0 ("[METRICS] up to date: …"), so a push-to-main CI job can
+# run this and commit the appended row + regenerated dashboard back without ever
+# duplicating a row (that workflow is authored in
+# docs/phase_g_env_enhancements.md for the maintainer to apply — it is its own
+# job, on `main` only, and never runs on a PR branch). `dashboard` additionally
+# emits a filterable/sortable run history, a per-tier drill-down and git_sha →
+# commit links; still ONE self-contained file with inlined CSS/JS/SVG, no CDN
+# and no external fetch (the generator re-checks that and prints the count).
 #
 # Stdlib Python only (sqlite3 module; the sqlite3 CLI is NOT required).
 METRICS_DB    ?= metrics/metrics.db
