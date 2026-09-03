@@ -44,7 +44,9 @@ flowchart LR
 | `tools/trace_compare.py` | cycle-accurate PyUVM-vs-UVM trace diff |
 | `tools/coverage_report.py` | `make coverage` report (`[COV] line=NN.N%`, `[COV] branch=NN.N%`) |
 | `dv/waves/` | curated GTKWave layouts (`default.gtkw`) — **committed**; the dumps are not |
+| `dv/waves/viewer/wave_viewer.html` | vendored self-contained browser waveform viewer (the `make wave-web` template) |
 | `tools/wave_check.py` | `make wave-check` layout drift-guard (`fst2vcd`-resolved net paths) |
+| `tools/wave_web.py` | `make wave-web` bundler: dump + viewer → one offline HTML file |
 | `formal/` | SymbiYosys BMC wrappers + `.sby` jobs (`make formal`, see below) |
 | `tools/formal_run.sh`, `tools/formal_prep.py` | `make formal` driver + yosys-frontend source shim |
 | `metrics/` | committed metrics store (`schema.sql` @ `user_version = 2`, `metrics.db`) + generated `dashboard.html` |
@@ -84,6 +86,7 @@ make formal         # [FORMAL] <job>: BMC depth N PASSED   (SymbiYosys BMC)
 make waves          # [WAVES] wrote build/waves/test_roundtrip.fst
 make wave           # same, then open it in GTKWave with dv/waves/default.gtkw
 make wave-check     # [WAVES] wave-check: … every path resolves
+make wave-web       # bundle that same dump into ONE offline build/waves/*.html
 ```
 
 …plus the post-gate metrics store and its offline dashboard:
@@ -177,12 +180,14 @@ make waves                  # dump build/waves/test_roundtrip.fst
 make waves TEST=smoke       # …of a different test (dv/pyuvm/test_<TEST>.py)
 make wave                   # dump, then open it in GTKWave with the layout
 make wave-check             # drift-guard: every committed layout still resolves
+make wave-web               # bundle that dump into ONE offline HTML file
 ```
 
 ```
 [WAVES] wrote build/waves/test_roundtrip.fst (9597 bytes) from dv/pyuvm MODULE=test_roundtrip (Verilator FST, -DWAVES build)
 [WAVES] open with: make wave TEST=roundtrip   layout: dv/waves/default.gtkw
 [WAVES] wave-check: 1 layout(s), 50 net path(s), 1 dump(s) — every path resolves (hierarchy read with fst2vcd)
+[WAVES] wrote build/waves/test_roundtrip.html (256304 bytes) — single self-contained file: inlined viewer + base64 VCD, 0 external resource ref(s) [none]
 ```
 
 **Dumping is strictly opt-in and cannot reach the gate.** FST tracing is compiled
@@ -239,6 +244,53 @@ make wave-check                    # then re-prove it
 Toolchain: Verilator's own FST writer + **apt `gtkwave`** (`Dockerfile.dev`, which
 `.devcontainer/` builds, and the root `Dockerfile` for `fst2vcd`) — **not** OSS CAD
 Suite. Opening the GUI needs a display; `make wave-check` is the automatable half.
+
+### Browser viewer — `make wave-web` (no desktop app, no X11)
+
+GTKWave needs a display, which a Codespace does not have. `make wave-web` bundles
+**the same `-DWAVES` dump** into a single self-contained HTML file you just open:
+
+```bash
+make waves && make wave-web        # -> build/waves/test_roundtrip.html
+make wave-web TEST=smoke           # builds the dump itself if it is missing
+```
+
+```
+[WAVES] wrote build/waves/test_roundtrip.html (256304 bytes) — single self-contained file: inlined viewer + base64 VCD, 0 external resource ref(s) [none]
+[WAVES] source dump build/waves/test_roundtrip.fst (9597 bytes, the -DWAVES FST from `make waves`) -> 170712 bytes of VCD, 50 default signal(s) from dv/waves/default.gtkw
+[WAVES] open it in a browser — offline, no CDN, no external fetch: file:///…/build/waves/test_roundtrip.html
+```
+
+- **One file, and it works offline.** Everything is inside it: the viewer's CSS
+  and JS inline, and the waveform itself as base64. No CDN, no stylesheet link,
+  no external script, no web font, no image, no async request. Copy it anywhere,
+  attach it to an issue, open it with the network off.
+- **That claim is checked, not asserted.** `tools/wave_web.py` re-scans the file
+  it just wrote for every construct that would make a browser load something
+  (using the same scanner as `make dashboard`) and prints the count — and
+  **fails** if it is not zero, so a viewer that ever grew a CDN reference could
+  not ship.
+- **It is a small VCD viewer, not a WASM one — deliberately.** A vendored Surfer
+  WASM build would be a multi-megabyte binary blob in the repo that nobody here
+  can review; `dv/waves/viewer/wave_viewer.html` is a few hundred lines of
+  dependency-free ES5 you can read. It gives you a signal tree with a filter, a
+  waveform canvas (1-bit square waves, buses as hexagons with values, x/z
+  highlighted), zoom/pan/fit, a click cursor plus a shift-click marker with Δ,
+  a value-at-cursor column and hex/bin/udec radix. It is **not** GTKWave: no
+  bundles, no expressions, no saved layouts, no analog traces. When you have a
+  display, `make wave` is still the better tool.
+- **No second dump path.** The FST is exactly the one `make waves` wrote; the
+  conversion to VCD happens once, at bundle time, with apt GTKWave's `fst2vcd`
+  (already an increment-3 dependency). The gate never sees any of it.
+- **The default view is the curated layout.** It reuses `dv/waves/<TEST>.gtkw`
+  (else `default.gtkw`) via the same reader `make wave-check` uses, so the page
+  opens on the same 50 signals GTKWave would; `clear` / `default` and the tree
+  let you change it. Group rows are not carried over — the viewer has no group
+  concept.
+- Output is git-ignored (`build/waves/`); the **template** is committed. Opening
+  the template directly just says "no waveform bundled — run `make wave-web`".
+- Large dumps: the VCD is inlined, so `--max-mb` (default 64) refuses to build a
+  bundle that would no longer be one comfortably-openable file.
 
 **Not yet extended to the SV UVM env.** `make waves-uvm` / `make wave-uvm` are
 deliberately deferred: that flow needs the from-source UVM Verilator, which

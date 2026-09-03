@@ -612,7 +612,7 @@ Notes for whoever applies it:
 - If `gtkwave` is *not* added to the apt list, the step still passes — it prints
   `wave-check SKIPPED` and exits 0. That is the honest outcome, not a false green.
 
-## Increment 4 — waves: self-contained browser viewer
+## Increment 4 — waves: self-contained browser viewer — **LANDED**
 
 A committed, **self-contained** waveform viewer so an FST/VCD opens in a
 Codespace/browser with no desktop app or X11 (your browser-centric workflow):
@@ -625,6 +625,154 @@ Codespace/browser with no desktop app or X11 (your browser-centric workflow):
 - Docs (`README` "Waveform debugging", `PLAN.md`) + `make help`. If a full WASM
   viewer is too heavy for one increment, ship a smaller self-contained VCD viewer
   and say so honestly.
+
+### What landed
+
+**Honest headline first: this is the smaller self-contained VCD viewer, not a
+vendored Surfer WASM build.** That was a deliberate choice, and the plan
+explicitly allows it. A Surfer/WASM bundle is a multi-megabyte binary artifact
+that would have to be committed here, that nobody reviewing a PR can read, and
+whose provenance we could not verify offline. `dv/waves/viewer/wave_viewer.html`
+is ~700 lines of dependency-free ES5 + CSS that a reviewer can read end to end.
+It is **not** a GTKWave replacement — no bundles, no expressions, no saved
+layouts, no analog traces — and the README says so. Where a display exists,
+`make wave` is still the better tool; this is for the Codespace/browser workflow
+where GTKWave is simply not reachable.
+
+**1. `make wave-web [TEST=<name>]` → `tools/wave_web.py` (stdlib).**
+It consumes **increment 3's dump, unchanged** — `build/waves/test_<TEST>.fst`,
+the one the `-DWAVES` build wrote — and runs `make waves TEST=<name>` itself if
+it is missing. There is **no second dump path**: nothing new is compiled or
+simulated, and `dv/pyuvm/Makefile` is not touched by this increment at all. The
+FST is converted to VCD **once, at bundle time**, by apt GTKWave's `fst2vcd`
+(already an increment-3 dependency); the browser never sees an FST. That VCD is
+base64'd into the committed viewer template along with a small JSON metadata
+blob, and the result is ONE file under `build/waves/`.
+
+**2. "Self-contained" is checked on the artifact, not asserted.** After writing
+the page, `wave_web.py` re-scans it with `external_refs()` **imported from
+`tools/metrics_dashboard.py`** — one implementation of that scanner for the whole
+repo, so `make dashboard` and `make wave-web` can never drift on what "no CDN"
+means — and prints the count. If the count is non-zero the target **fails**, so a
+viewer that ever grew a CDN link, a web font or an async request could not ship.
+Measured **0**, on the generated bundles and on the committed template:
+
+```
+build/waves/test_roundtrip.html, build/waves/test_smoke.html,
+dv/waves/viewer/wave_viewer.html — all three:
+  http 0   https 0   "<script src=" 0   @import 0   "url(" 0   "fetch(" 0
+  XMLHttpRequest 0   WebSocket 0   "<link" 0   srcset 0   "<img" 0
+  "<iframe" 0   importScripts 0   //cdn 0   integrity= 0
+```
+
+The only hits anywhere in this increment are inside `tools/wave_web.py` itself,
+in the comment and the imported regex list that *name* those constructs in order
+to look for them — a Python script the browser never loads.
+
+**3. It really renders, offline — proven headlessly, not claimed.** Rendering is
+a browser action, so it was driven as one: headless Chrome with
+`--host-resolver-rules="MAP * ~NOTFOUND"` (every hostname fails to resolve — the
+network is gone) on the `file://` URL produced a full screenshot of the waveform.
+It was then driven over the W3C WebDriver protocol (chromedriver + stdlib
+`urllib`; no extra pip) to exercise the UI for real:
+
+- 50 default rows materialise from `dv/waves/default.gtkw`; 559 signals in the
+  tree; `8668 value changes, 410001ps @ 1ps`;
+- radix round-trip on the 128-bit `lp_data` at a cursor 204838.502ps into the
+  run — `0x100700000000abcd0007` / `75686990934433172619271` / `b0000…0111` —
+  with the udec and bin renderings cross-checked against Python's own `int()`
+  (equal);
+- filter (`deframer` → 26 of 559), `clear` → 0 rows, `default` → 50 rows,
+  click-to-add from the tree → 51 rows, zoom-in → `view 61500.15ps …
+  348500.85ps`, `fit` → `view 0ps … 410001ps`, click-to-set-cursor;
+- the canvas is genuinely painted (106660 non-background pixels sampled).
+
+The committed **template** was opened directly too: unfilled it is still valid
+HTML/JS and renders "No waveform bundled … run `make wave-web`" rather than
+throwing. That check found a real bug — the metadata placeholder had been spliced
+into a JS expression position, a syntax error before substitution — now fixed by
+carrying it in its own `application/json` data block.
+
+**4. Reuse instead of re-implementation.** The default signal list comes from the
+same curated `dv/waves/<TEST>.gtkw` (else `default.gtkw`) increment 3 committed,
+read with `layout_paths()` / `RANGE_RE` **imported from `tools/wave_check.py`** —
+so the page opens on the same 50 signals GTKWave would, and `make wave-check`
+stays the single guard on those paths. Group/comment rows are not carried over
+(the viewer has no group concept); paths a dump does not contain are silently
+skipped, which is what makes `default.gtkw` a usable default view for
+`TEST=smoke` too.
+
+**5. Off-gate, and structurally unable to reach it.** No RTL, no testbench, no
+trace emitter (`dv/pyuvm/test_roundtrip.py`, `dv/uvm/sv/**`), no clock/reset/
+stimulus schedule and no simulator flag was touched. The whole increment is: a
+new committed viewer template, a new `tools/` script, one new `.PHONY` target,
+`make help`, and docs. `build/waves/` was already git-ignored, so the bundle is
+too. No file under `.github/workflows/` was edited, and none needs to be.
+Proof rather than assertion: after `make lint && make pyuvm && make fcov` on a
+cleaned tree, `dv/pyuvm/sim_build/Vtop_classes.mk` still carries `VM_TRACE = 0` /
+`VM_TRACE_VCD = 0` / `VM_TRACE_FST = 0`, no `*.vcd`/`*.fst` exists anywhere under
+`dv/pyuvm/` or `rtl/`, and `dv/pyuvm/build/bridge.trace` still has md5
+`c1b8a30cc2e822e5efe7e5e103cc9b12` — byte-identical to the value increment 3
+recorded.
+
+**LANDED banners (local, GitHub runner: apt Verilator 5.020, Icarus 12,
+cocotb 1.9.2 + pyuvm 4.0.1 + cocotb_coverage 1.2.0, apt gtkwave 3.3.116,
+Chrome + chromedriver for the headless render check):**
+
+```
+[lint] RTL OK
+** test_roundtrip.RoundtripTest   PASS         410.00           0.04      10317.06  **
+** TESTS=1 PASS=1 FAIL=0 SKIP=0                410.00           0.07       5841.17  **
+[SB] driven=8 recovered=8 stream_words=13 model_words=13
+[SB] integrated-bridge cross-check PASS (3-way agreement)
+[FCOV] bins=39/39 = 100.0%  tool=cocotb_coverage
+[WAVES] wrote build/waves/test_roundtrip.fst (9597 bytes) from dv/pyuvm MODULE=test_roundtrip (Verilator FST, -DWAVES build)
+[WAVES] wrote build/waves/test_roundtrip.html (256304 bytes) — single self-contained file: inlined viewer + base64 VCD, 0 external resource ref(s) [none]
+[WAVES] source dump build/waves/test_roundtrip.fst (9597 bytes, the -DWAVES FST from `make waves`) -> 170712 bytes of VCD, 50 default signal(s) from dv/waves/default.gtkw
+[WAVES] open it in a browser — offline, no CDN, no external fetch: file:///…/build/waves/test_roundtrip.html
+```
+
+Timings unchanged: `make lint` 0.09 s, a clean `make pyuvm` 12.05 s (increment 3
+recorded 12.5 s), `make fcov FCOV_SIM=icarus` 2.95 s.
+
+The auto-build path was exercised for real on a second target, with no
+`build/waves/test_smoke.fst` present:
+
+```
+[WAVES] wave-web: build/waves/test_smoke.fst missing — running: make waves TEST=smoke
+[WAVES] wrote build/waves/test_smoke.html (93159 bytes) — single self-contained file: inlined viewer + base64 VCD, 0 external resource ref(s) [none]
+```
+
+and so was the self-guard — the viewer's own header comment originally spelled
+those constructs out, and the target refused to ship the bundle until it was
+reworded:
+
+```
+[WAVES] wrote build/waves/test_roundtrip.html (255791 bytes) — … 3 external resource ref(s) [<link ...>=1, css url(...)=1, fetch()/XHR=1]
+[WAVES] wave-web FAILED: 3 external resource ref(s) in build/waves/test_roundtrip.html — the bundle must be openable offline   (exit 1)
+```
+
+**Not runnable here, said plainly:** `make uvm` / `make trace-compare` /
+`make lint-uvm` were **not** run — this runner has no from-source UVM Verilator
+and no `UVM_HOME`; CI's `uvm-verilator.yml` measures them on this PR, and this
+increment changes no file they compile. (`make pyuvm` needs this runner's
+documented `PYTHON3="$(command -v python3)"` workaround — a pre-existing host
+quirk described in `README.md`, not something this increment introduced.)
+Whether the page *looks* right is ultimately a human judgement in a real browser;
+what is automated is that it is one file, that it contains zero external
+references, and that a headless browser with no network parses it, paints the
+canvas and answers correctly when driven.
+
+### CI step — none needed
+
+`make wave-web` is a developer artifact generator, not a check: it produces a
+git-ignored file for a human to open. Wiring it into CI would upload a ~250 KB
+artifact nobody asked for on every run. The one thing worth guarding — that the
+curated layout still resolves — is already increment 3's `make wave-check`, whose
+optional advisory step is authored above. No workflow file was edited.
+
+**This closes Phase G.** There is no increment 5 in this thrust; the "Increment
+5" heading below predates it and was authored directly by the maintainer.
 
 ## Increment 5 — UVM Cookbook restructure + EDA Playground bundle
 

@@ -337,6 +337,26 @@ predecessor (only the FDI front-end + top are new).
   `Dockerfile.dev` (the `.devcontainer` image) and the root `Dockerfile` — still
   **not** OSS CAD Suite. `make waves-uvm` is deferred (no UVM-capable Verilator
   on this host or the light CI job, so it could not be built or proven).
+- [x] **G4. Waves: self-contained browser viewer** — **closes Phase G**
+  (`docs/phase_g_env_enhancements.md` increment 4) — `make wave-web
+  [TEST=<name>]` bundles **the same `-DWAVES` dump G3 already writes** plus the
+  vendored viewer `dv/waves/viewer/wave_viewer.html` into ONE openable
+  `build/waves/test_<TEST>.html`, so a waveform can be read in a
+  Codespace/browser with no desktop app and no X11. Strictly self-contained:
+  CSS + JS inline, the waveform carried as base64 VCD, **no CDN, no stylesheet
+  link, no external script, no web font, no image, no async request** — and
+  `tools/wave_web.py` re-scans the file it just wrote with the same external-
+  resource scanner `make dashboard` uses, printing the count and **failing** if
+  it is non-zero. Honest scope: this is a **small hand-written VCD viewer**
+  (signal tree + filter, canvas waves, buses as hexagons, x/z highlighted,
+  zoom/pan/fit, cursor + marker with Δ, value-at-cursor, hex/bin/udec), **not**
+  a vendored Surfer WASM build — a reviewable few hundred lines of ES5 beats a
+  multi-megabyte binary blob, and it is not a GTKWave replacement. There is
+  **no second dump path**: the FST is converted to VCD once at bundle time by
+  apt GTKWave's `fst2vcd` (already a G3 dependency), the default view is read
+  from the same `dv/waves/*.gtkw` layout `make wave-check` validates, and
+  nothing in the gate compiles, runs or reads any of it. Bundles are
+  git-ignored; the template is committed.
 - [ ] **21+. Coverage closure, randomized waveform suite, error-path directed
   tests, overflow/accumulator guards, deeper/unbounded formal (k-induction on the
   gearbox).** Enumerate once Phase E is green.

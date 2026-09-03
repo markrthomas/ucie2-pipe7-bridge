@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<!--
+  ucie2-pipe7-bridge — self-contained browser waveform viewer (Phase G inc 4).
+
+  This file is the VENDORED, COMMITTED template. `tools/wave_web.py` (driven by
+  `make wave-web`) copies it and substitutes three placeholders, each spelled as
+  the name below wrapped in doubled at-signs (not written out here, or this
+  comment would itself be substituted):
+
+      WAVE_TITLE     plain-text page title
+      WAVE_META      a JSON object (dump provenance + default signal list)
+      WAVE_VCD_B64   base64 of the VCD converted from the increment-3 FST
+
+  producing ONE openable file under build/waves/. Everything the browser needs
+  is inside that file: no CDN, no stylesheet link, no external script source, no
+  CSS asset reference, no async request, no web font, no image. Open it from the
+  filesystem, offline, with the network off, and it renders. (This comment
+  deliberately spells none of those constructs out — the generator's scanner
+  would count them.) That property is not merely asserted: the
+  generator re-scans its own output for every construct that would make a
+  browser load something and prints the count in the [WAVES] banner.
+
+  Deliberately hand-written rather than a vendored WASM viewer (Surfer et al.):
+  a few hundred lines of dependency-free ES5 that we can read, review and keep
+  offline beats a multi-megabyte binary blob we cannot inspect. It reads VCD —
+  the FST is converted once, at bundle time, by apt gtkwave's fst2vcd. See
+  docs/phase_g_env_enhancements.md.
+
+  UNFILLED, this template is still a valid page: it renders a short "no dump
+  bundled" note telling you to run `make wave-web`.
+
+  Keys: +/- zoom, arrows pan, 0 fit, click = cursor, shift-click = marker.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@@WAVE_TITLE@@</title>
+<style>
+  :root {
+    --bg:#12161c; --panel:#1a2029; --edge:#2b3543; --fg:#dbe4ee; --dim:#8fa1b6;
+    --accent:#6fd3ff; --ok:#7ee081; --warn:#ffd166; --bad:#ff6b6b; --grid:#232c38;
+  }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body {
+    background:var(--bg); color:var(--fg); font:13px/1.45 ui-monospace,
+    SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  header {
+    flex:0 0 auto; padding:8px 12px; background:var(--panel);
+    border-bottom:1px solid var(--edge); display:flex; flex-wrap:wrap;
+    gap:8px 14px; align-items:center;
+  }
+  header h1 { font-size:14px; margin:0; font-weight:600; color:var(--accent); }
+  header .meta { color:var(--dim); font-size:11.5px; }
+  header .meta b { color:var(--fg); font-weight:600; }
+  button, select, input[type=search] {
+    background:#232c38; color:var(--fg); border:1px solid var(--edge);
+    border-radius:4px; padding:3px 8px; font:inherit; font-size:12px;
+  }
+  button { cursor:pointer; }
+  button:hover { background:#2c3846; }
+  button:active { background:#36445a; }
+  #main { flex:1 1 auto; display:flex; min-height:0; }
+  #side {
+    flex:0 0 320px; min-width:220px; background:var(--panel);
+    border-right:1px solid var(--edge); display:flex; flex-direction:column;
+  }
+  #side .hd { padding:6px 8px; border-bottom:1px solid var(--edge); display:flex; gap:6px; }
+  #side .hd input { flex:1 1 auto; min-width:0; }
+  #tree { flex:1 1 auto; overflow:auto; padding:4px 0 12px; }
+  #tree .sc { cursor:pointer; padding:1px 6px; color:var(--warn); white-space:nowrap; }
+  #tree .sc:hover { background:#232c38; }
+  #tree .sg {
+    padding:1px 6px; white-space:nowrap; cursor:pointer; display:flex; gap:6px;
+  }
+  #tree .sg:hover { background:#232c38; }
+  #tree .sg.on { color:var(--accent); }
+  #tree .w { color:var(--dim); }
+  #right { flex:1 1 auto; display:flex; flex-direction:column; min-width:0; }
+  #bar {
+    flex:0 0 auto; display:flex; gap:10px; align-items:center; padding:5px 8px;
+    background:var(--panel); border-bottom:1px solid var(--edge);
+    font-size:11.5px; color:var(--dim); flex-wrap:wrap;
+  }
+  /* The ruler sits OUTSIDE the scrolling pane (time is virtual, not scrolled),
+     so it needs a spacer exactly as wide as the name column to stay aligned.
+     Its canvas is then given the wave canvas's exact pixel width by draw(). */
+  #rulerrow { flex:0 0 auto; display:flex; }
+  #rulerpad {
+    flex:0 0 300px; background:var(--panel); border-right:1px solid var(--edge);
+  }
+  #ruler { flex:1 1 auto; min-width:0; display:block; background:var(--bg); }
+  #pane { flex:1 1 auto; overflow:auto; display:flex; min-height:0; }
+  #names {
+    flex:0 0 300px; background:var(--panel); border-right:1px solid var(--edge);
+  }
+  #names .r {
+    height:24px; line-height:23px; padding:0 6px; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; border-bottom:1px solid #1e2631;
+    display:flex; gap:6px; cursor:pointer;
+  }
+  #names .r:hover { background:#232c38; }
+  #names .r .nm { flex:1 1 auto; overflow:hidden; text-overflow:ellipsis;
+                  direction:rtl; text-align:left; }
+  #names .r .vl { flex:0 0 auto; color:var(--accent); }
+  #cwrap { flex:1 1 auto; min-width:0; position:relative; }
+  #wave { display:block; }
+  #empty { padding:40px; color:var(--dim); max-width:60ch; }
+  #empty code { color:var(--accent); }
+  .pill { padding:1px 6px; border:1px solid var(--edge); border-radius:9px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>@@WAVE_TITLE@@</h1>
+  <span class="meta" id="prov"></span>
+</header>
+
+<div id="main">
+  <div id="side">
+    <div class="hd">
+      <input type="search" id="filter" placeholder="filter signals&hellip;" autocomplete="off">
+      <button id="clear" title="remove every signal from the wave view">clear</button>
+      <button id="reset" title="restore the curated default view">default</button>
+    </div>
+    <div id="tree"></div>
+  </div>
+
+  <div id="right">
+    <div id="bar">
+      <button id="zin" title="zoom in (+)">+</button>
+      <button id="zout" title="zoom out (-)">&minus;</button>
+      <button id="zfit" title="fit the whole dump (0)">fit</button>
+      <label>radix
+        <select id="radix">
+          <option value="hex">hex</option>
+          <option value="bin">bin</option>
+          <option value="udec">udec</option>
+        </select>
+      </label>
+      <span id="stat"></span>
+    </div>
+    <div id="rulerrow"><div id="rulerpad"></div><canvas id="ruler" height="22"></canvas></div>
+    <div id="pane">
+      <div id="names"></div>
+      <div id="cwrap"><canvas id="wave"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<!-- The payload. Both are data blocks (non-JS type => never executed), which is
+     also what keeps this template SYNTACTICALLY VALID while unfilled: no
+     placeholder is ever spliced into an expression position. -->
+<script id="wave-meta" type="application/json">@@WAVE_META@@</script>
+<script id="wave-data" type="text/plain">@@WAVE_VCD_B64@@</script>
+
+<script>
+"use strict";
+(function () {
+
+// ---------------------------------------------------------------------------
+// 0. The bundled payload.
+// ---------------------------------------------------------------------------
+var META = {};
+try { META = JSON.parse(document.getElementById("wave-meta").textContent); }
+catch (e) { META = {}; }                       // unfilled template: no metadata
+var RAW  = document.getElementById("wave-data").textContent.trim();
+var UNFILLED = "@@" + "WAVE_VCD_B64" + "@@";   // split so the generator misses it
+
+function bail(msg) {
+  var d = document.createElement("div");
+  d.id = "empty";
+  d.innerHTML = msg;
+  document.getElementById("main").innerHTML = "";
+  document.getElementById("main").appendChild(d);
+}
+
+if (!RAW || RAW === UNFILLED) {
+  bail("<b>No waveform bundled.</b><br><br>This is the committed viewer " +
+       "template (<code>dv/waves/viewer/wave_viewer.html</code>), not a bundle." +
+       "<br><br>Generate an openable one with:<br><br>" +
+       "<code>make waves &amp;&amp; make wave-web TEST=roundtrip</code><br><br>" +
+       "and open <code>build/waves/test_roundtrip.html</code>.");
+  return;
+}
+
+// base64 -> text. atob() is a platform builtin; nothing is loaded.
+function b64ToText(b64) {
+  var bin = atob(b64), i, n = bin.length, bytes = new Uint8Array(n);
+  for (i = 0; i < n; i++) { bytes[i] = bin.charCodeAt(i); }
+  if (typeof TextDecoder === "function") {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+  return bin;                                    // VCD is ASCII in practice
+}
+
+// ---------------------------------------------------------------------------
+// 1. VCD parser (header + value changes).
+// ---------------------------------------------------------------------------
+// Scope paths are built the way GTKWave and tools/wave_check.py build them:
+// scope names joined with '.', EMPTY scope names contributing nothing (cocotb's
+// Verilator main constructs the model as `new Vtop("")`, so the root scope of
+// these dumps is literally unnamed and a top-level port is just `pclk`).
+function parseVCD(text) {
+  var cut = text.indexOf("$enddefinitions");
+  if (cut < 0) { throw new Error("not a VCD: no $enddefinitions"); }
+  var head = text.slice(0, cut);
+  var bodyAt = text.indexOf("$end", cut);
+  var body = text.slice(bodyAt < 0 ? cut : bodyAt + 4);
+
+  var tok = head.split(/\s+/), i, n = tok.length;
+  var scopes = [], sigs = [], timescale = "", byId = {};
+  var root = { name: "", path: "", kids: [], sigs: [] };
+  var stack = [root];
+
+  for (i = 0; i < n; i++) {
+    var t = tok[i];
+    if (t === "$scope") {
+      var args = [];
+      while (++i < n && tok[i] !== "$end") { if (tok[i]) { args.push(tok[i]); } }
+      var nm = args.length > 1 ? args[1] : "";
+      var par = stack[stack.length - 1];
+      var node = { name: nm, path: par.path && nm ? par.path + "." + nm
+                                                  : (nm || par.path),
+                   kids: [], sigs: [] };
+      par.kids.push(node);
+      stack.push(node);
+    } else if (t === "$upscope") {
+      while (++i < n && tok[i] !== "$end") { /* skip */ }
+      if (stack.length > 1) { stack.pop(); }
+    } else if (t === "$var") {
+      var v = [];
+      while (++i < n && tok[i] !== "$end") { if (tok[i]) { v.push(tok[i]); } }
+      // $var <type> <width> <id> <name> [<range>]
+      if (v.length >= 4) {
+        var sc = stack[stack.length - 1];
+        var s = { kind: v[0], w: parseInt(v[1], 10) || 1, id: v[2],
+                  name: v[3], range: v.length > 4 ? v[4] : "",
+                  path: sc.path ? sc.path + "." + v[3] : v[3] };
+        sigs.push(s);
+        sc.sigs.push(s);
+        byId[s.id] = byId[s.id] || { t: [], v: [] };
+      }
+    } else if (t === "$timescale") {
+      var ts = [];
+      while (++i < n && tok[i] !== "$end") { if (tok[i]) { ts.push(tok[i]); } }
+      timescale = ts.join("");
+    } else if (t && t.charAt(0) === "$" && t !== "$end") {
+      while (++i < n && tok[i] !== "$end") { /* skip $date/$version/... */ }
+    }
+  }
+
+  // Value changes. One pass, line by line.
+  var lines = body.split("\n"), tNow = 0, tMax = 0, changes = 0, k;
+  for (k = 0; k < lines.length; k++) {
+    var ln = lines[k];
+    // cheap trim (VCD lines are short)
+    var a = 0, b = ln.length;
+    while (a < b && ln.charCodeAt(a) <= 32) { a++; }
+    while (b > a && ln.charCodeAt(b - 1) <= 32) { b--; }
+    if (a >= b) { continue; }
+    var c = ln.charAt(a);
+    if (c === "#") {
+      tNow = parseInt(ln.slice(a + 1, b), 10);
+      if (tNow > tMax) { tMax = tNow; }
+      continue;
+    }
+    if (c === "$") { continue; }                 // $dumpvars / $end / $dumpoff
+    var val, id;
+    if (c === "b" || c === "B" || c === "r" || c === "R") {
+      var sp = ln.indexOf(" ", a);
+      if (sp < 0) { continue; }
+      val = ln.slice(a + 1, sp);
+      id  = ln.slice(sp + 1, b).replace(/\s+/g, "");
+      if (c === "r" || c === "R") { val = "R" + val; }
+    } else {
+      val = c;
+      id  = ln.slice(a + 1, b);
+    }
+    var rec = byId[id];
+    if (!rec) { continue; }                      // a var we never declared
+    rec.t.push(tNow);
+    rec.v.push(val);
+    changes++;
+  }
+  return { root: root, sigs: sigs, byId: byId, tMax: tMax,
+           timescale: timescale || "1ps", changes: changes };
+}
+
+var VCD;
+try {
+  VCD = parseVCD(b64ToText(RAW));
+} catch (e) {
+  bail("<b>Could not parse the bundled dump.</b><br><br>" + String(e));
+  return;
+}
+
+var byPath = {};
+for (var si = 0; si < VCD.sigs.length; si++) {
+  if (!byPath[VCD.sigs[si].path]) { byPath[VCD.sigs[si].path] = VCD.sigs[si]; }
+}
+
+// ---------------------------------------------------------------------------
+// 2. Value formatting.
+// ---------------------------------------------------------------------------
+function widen(v, w) {
+  if (v.length === w) { return v; }
+  if (v.length > w)   { return v.slice(v.length - w); }
+  var f = v.charAt(0), pad = (f === "x" || f === "X" || f === "z" || f === "Z")
+        ? f.toLowerCase() : "0";
+  return new Array(w - v.length + 1).join(pad) + v;
+}
+function isXZ(v) { return /[xzXZ]/.test(v); }
+
+function toHex(bits) {
+  var pad = (4 - (bits.length % 4)) % 4, i, out = "";
+  if (pad) { bits = widen(bits, bits.length + pad); }
+  for (i = 0; i < bits.length; i += 4) {
+    var nib = bits.substr(i, 4);
+    out += isXZ(nib) ? (/[xX]/.test(nib) ? "x" : "z")
+                     : parseInt(nib, 2).toString(16);
+  }
+  return out.replace(/^0+(?=.)/, "");
+}
+function toUDec(bits) {
+  if (isXZ(bits)) { return toHex(bits); }
+  if (bits.length <= 32) { return String(parseInt(bits, 2)); }
+  if (typeof BigInt === "function") {
+    try { return BigInt("0b" + bits).toString(10); } catch (e) { /* fall */ }
+  }
+  return "0x" + toHex(bits);
+}
+function fmt(raw, w) {
+  if (raw === undefined) { return "-"; }
+  if (raw.charAt(0) === "R") { return raw.slice(1); }   // $var real
+  var bits = widen(raw, w);
+  if (w === 1) { return bits; }
+  var r = ui.radix.value;
+  if (r === "bin")  { return "b" + bits; }
+  if (r === "udec") { return toUDec(bits); }
+  return (isXZ(bits) ? "" : "0x") + toHex(bits);
+}
+
+// value at time t (last change with time <= t)
+function at(rec, t) {
+  var lo = 0, hi = rec.t.length - 1, ans = -1;
+  while (lo <= hi) {
+    var mid = (lo + hi) >> 1;
+    if (rec.t[mid] <= t) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return ans < 0 ? undefined : rec.v[ans];
+}
+
+// ---------------------------------------------------------------------------
+// 3. State + DOM handles.
+// ---------------------------------------------------------------------------
+var ui = {
+  tree:   document.getElementById("tree"),
+  names:  document.getElementById("names"),
+  wave:   document.getElementById("wave"),
+  ruler:  document.getElementById("ruler"),
+  cwrap:  document.getElementById("cwrap"),
+  pane:   document.getElementById("pane"),
+  filter: document.getElementById("filter"),
+  radix:  document.getElementById("radix"),
+  stat:   document.getElementById("stat"),
+  prov:   document.getElementById("prov")
+};
+var ROW = 24;
+var view = { t0: 0, t1: VCD.tMax || 1, cursor: 0, marker: -1 };
+var shown = [];                                  // signal objects, in order
+
+function defaultView() {
+  var list = (META && META.defaults) || [], out = [], i;
+  for (i = 0; i < list.length; i++) {
+    if (byPath[list[i]]) { out.push(byPath[list[i]]); }
+  }
+  if (!out.length) { out = VCD.sigs.slice(0, 24); }
+  shown = out;
+}
+
+function clampView() {
+  var span = view.t1 - view.t0;
+  if (span < 1) { view.t1 = view.t0 + 1; span = 1; }
+  var full = VCD.tMax || 1;
+  if (span > full * 4) { view.t0 = 0; view.t1 = full; }
+  if (view.t0 < -full)      { view.t0 = -full; }
+  if (view.t1 > full * 2)   { view.t1 = full * 2; }
+}
+function zoom(f, anchor) {
+  var span = view.t1 - view.t0;
+  var a = (anchor === undefined) ? view.t0 + span / 2 : anchor;
+  var ns = span * f;
+  view.t0 = a - (a - view.t0) * f;
+  view.t1 = view.t0 + ns;
+  clampView(); draw();
+}
+function pan(fr) {
+  var d = (view.t1 - view.t0) * fr;
+  view.t0 += d; view.t1 += d; clampView(); draw();
+}
+function fit() { view.t0 = 0; view.t1 = VCD.tMax || 1; draw(); }
+
+// ---------------------------------------------------------------------------
+// 4. Signal tree.
+// ---------------------------------------------------------------------------
+var collapsed = {};
+function inShown(s) { return shown.indexOf(s) >= 0; }
+function toggle(s) {
+  var i = shown.indexOf(s);
+  if (i >= 0) { shown.splice(i, 1); } else { shown.push(s); }
+  renderTree(); draw();
+}
+
+function renderTree() {
+  var q = ui.filter.value.toLowerCase();
+  var frag = document.createDocumentFragment();
+
+  function sigRow(s, depth) {
+    var d = document.createElement("div");
+    d.className = "sg" + (inShown(s) ? " on" : "");
+    d.style.paddingLeft = (6 + depth * 12) + "px";
+    d.appendChild(document.createTextNode((inShown(s) ? "■ " : "□ ") + s.name));
+    var w = document.createElement("span");
+    w.className = "w";
+    w.textContent = s.w > 1 ? s.range || ("[" + (s.w - 1) + ":0]") : "";
+    d.appendChild(w);
+    d.title = s.path;
+    d.onclick = function () { toggle(s); };
+    return d;
+  }
+
+  function walk(node, depth, parent) {
+    var hits = [], i;
+    for (i = 0; i < node.sigs.length; i++) {
+      var s = node.sigs[i];
+      if (!q || s.path.toLowerCase().indexOf(q) >= 0) { hits.push(s); }
+    }
+    var kidFrags = [], any = hits.length > 0;
+    for (i = 0; i < node.kids.length; i++) {
+      var kf = document.createElement("div");
+      if (walk(node.kids[i], node.name ? depth + 1 : depth, kf)) {
+        kidFrags.push(kf); any = true;
+      }
+    }
+    if (!any) { return false; }
+    if (node.name) {
+      var h = document.createElement("div");
+      h.className = "sc";
+      h.style.paddingLeft = (6 + depth * 12) + "px";
+      var open = !collapsed[node.path] || !!q;
+      h.textContent = (open ? "▾ " : "▸ ") + node.name;
+      h.onclick = function () { collapsed[node.path] = open; renderTree(); };
+      parent.appendChild(h);
+      if (!open) { return true; }
+    }
+    for (i = 0; i < hits.length; i++) {
+      parent.appendChild(sigRow(hits[i], node.name ? depth + 1 : depth));
+    }
+    for (i = 0; i < kidFrags.length; i++) { parent.appendChild(kidFrags[i]); }
+    return true;
+  }
+
+  var box = document.createElement("div");
+  walk(VCD.root, 0, box);
+  frag.appendChild(box);
+  ui.tree.innerHTML = "";
+  ui.tree.appendChild(frag);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Drawing.
+// ---------------------------------------------------------------------------
+var DPR = window.devicePixelRatio || 1;
+function sizeCanvas(cv, w, h) {
+  cv.width = Math.max(1, Math.round(w * DPR));
+  cv.height = Math.max(1, Math.round(h * DPR));
+  cv.style.width = w + "px";
+  cv.style.height = h + "px";
+  var g = cv.getContext("2d");
+  g.setTransform(DPR, 0, 0, DPR, 0, 0);
+  return g;
+}
+function xOf(t, w) { return (t - view.t0) / (view.t1 - view.t0) * w; }
+function tOf(x, w) { return view.t0 + x / w * (view.t1 - view.t0); }
+
+function niceStep(span, px) {
+  var target = span / Math.max(1, px / 90), p = Math.pow(10, Math.floor(Math.log(target) / Math.LN10));
+  var m = target / p;
+  return (m > 5 ? 10 : m > 2 ? 5 : m > 1 ? 2 : 1) * p;
+}
+function tsUnit() { return (VCD.timescale.match(/[a-z]+/i) || ["s"])[0]; }
+function tLabel(t) {
+  var v = Math.round(t * 1000) / 1000;
+  return v + tsUnit();
+}
+
+function drawRuler(w) {
+  var g = sizeCanvas(ui.ruler, w, 22);
+  g.fillStyle = "#12161c"; g.fillRect(0, 0, w, 22);
+  g.strokeStyle = "#2b3543"; g.beginPath();
+  g.moveTo(0, 21.5); g.lineTo(w, 21.5); g.stroke();
+  var step = niceStep(view.t1 - view.t0, w);
+  var t = Math.ceil(view.t0 / step) * step;
+  g.fillStyle = "#8fa1b6"; g.font = "10px ui-monospace, monospace";
+  g.textBaseline = "top";
+  for (; t <= view.t1; t += step) {
+    var x = Math.round(xOf(t, w)) + 0.5;
+    g.strokeStyle = "#2b3543";
+    g.beginPath(); g.moveTo(x, 14); g.lineTo(x, 21); g.stroke();
+    g.fillText(tLabel(t), x + 3, 2);
+  }
+  // cursor + marker ticks
+  var cx = Math.round(xOf(view.cursor, w)) + 0.5;
+  g.strokeStyle = "#6fd3ff";
+  g.beginPath(); g.moveTo(cx, 0); g.lineTo(cx, 21); g.stroke();
+  if (view.marker >= 0) {
+    g.strokeStyle = "#ffd166";
+    var mx = Math.round(xOf(view.marker, w)) + 0.5;
+    g.beginPath(); g.moveTo(mx, 0); g.lineTo(mx, 21); g.stroke();
+  }
+}
+
+function drawWave(w) {
+  var h = Math.max(shown.length * ROW, 1);
+  var g = sizeCanvas(ui.wave, w, h);
+  g.fillStyle = "#12161c"; g.fillRect(0, 0, w, h);
+
+  // vertical grid
+  var step = niceStep(view.t1 - view.t0, w), t;
+  g.strokeStyle = "#232c38"; g.beginPath();
+  for (t = Math.ceil(view.t0 / step) * step; t <= view.t1; t += step) {
+    var gx = Math.round(xOf(t, w)) + 0.5;
+    g.moveTo(gx, 0); g.lineTo(gx, h);
+  }
+  g.stroke();
+
+  g.font = "11px ui-monospace, monospace";
+  g.textBaseline = "middle";
+
+  for (var i = 0; i < shown.length; i++) {
+    var s = shown[i], rec = VCD.byId[s.id];
+    var top = i * ROW, hi = top + 5, lo = top + ROW - 7, mid = (hi + lo) / 2;
+    g.strokeStyle = "#1e2631";
+    g.beginPath(); g.moveTo(0, top + ROW - 0.5); g.lineTo(w, top + ROW - 0.5); g.stroke();
+    if (!rec || !rec.t.length) { continue; }
+
+    // first index at or before t0
+    var idx = 0, lo2 = 0, hi2 = rec.t.length - 1;
+    while (lo2 <= hi2) {
+      var m2 = (lo2 + hi2) >> 1;
+      if (rec.t[m2] <= view.t0) { idx = m2; lo2 = m2 + 1; } else { hi2 = m2 - 1; }
+    }
+    var j = idx;
+    while (j < rec.t.length && rec.t[j] <= view.t1) {
+      var tA = Math.max(rec.t[j], view.t0);
+      var tB = (j + 1 < rec.t.length) ? Math.min(rec.t[j + 1], view.t1) : view.t1;
+      var xA = xOf(tA, w), xB = xOf(tB, w);
+      if (xB > xA - 0.5) { seg(g, s, rec.v[j], xA, xB, hi, lo, mid); }
+      j++;
+      if (xB >= w) { break; }
+    }
+  }
+}
+
+function seg(g, s, raw, xA, xB, hi, lo, mid) {
+  var wpx = xB - xA;
+  if (s.w === 1) {
+    var v = raw.toLowerCase();
+    if (v === "1" || v === "0") {
+      var y = (v === "1") ? hi : lo;
+      g.strokeStyle = "#7ee081"; g.lineWidth = 1.4;
+      g.beginPath(); g.moveTo(xA, y); g.lineTo(xB, y); g.stroke();
+      g.beginPath(); g.moveTo(xA, hi); g.lineTo(xA, lo); g.stroke();  // edge
+    } else {
+      g.fillStyle = (v === "z") ? "rgba(255,209,102,.22)" : "rgba(255,107,107,.28)";
+      g.fillRect(xA, hi, Math.max(wpx, 1), lo - hi);
+      g.strokeStyle = (v === "z") ? "#ffd166" : "#ff6b6b"; g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(xA, mid); g.lineTo(xB, mid); g.stroke();
+    }
+    return;
+  }
+  // bus: a hexagon, plus the value if it fits
+  var bad = isXZ(raw);
+  var k = Math.min(3, Math.max(1, wpx / 3));
+  g.strokeStyle = bad ? "#ff6b6b" : "#7ee081"; g.lineWidth = 1.2;
+  g.beginPath();
+  g.moveTo(xA, mid); g.lineTo(xA + k, hi); g.lineTo(xB - k, hi);
+  g.lineTo(xB, mid); g.lineTo(xB - k, lo); g.lineTo(xA + k, lo);
+  g.closePath();
+  if (bad) { g.fillStyle = "rgba(255,107,107,.18)"; g.fill(); }
+  g.stroke();
+  var txt = fmt(raw, s.w);
+  if (wpx > 8 * (txt.length * 0.62 + 1)) {
+    g.fillStyle = "#dbe4ee"; g.textAlign = "center";
+    g.fillText(txt, (xA + xB) / 2, mid + 0.5);
+    g.textAlign = "left";
+  }
+}
+
+function drawNames() {
+  var html = [], i;
+  for (i = 0; i < shown.length; i++) {
+    var s = shown[i], rec = VCD.byId[s.id];
+    var v = rec ? fmt(at(rec, view.cursor), s.w) : "-";
+    html.push('<div class="r" data-i="' + i + '" title="' + esc(s.path) +
+              '"><span class="nm">' + esc(s.path) + '</span>' +
+              '<span class="vl">' + esc(v) + "</span></div>");
+  }
+  ui.names.innerHTML = html.join("") ||
+    '<div class="r"><span class="nm">(no signals — pick some on the left)</span></div>';
+}
+function esc(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                  .replace(/"/g, "&quot;");
+}
+
+function status() {
+  var d = (view.marker >= 0)
+        ? "  Δ=" + tLabel(Math.abs(view.cursor - view.marker)) : "";
+  ui.stat.textContent =
+    shown.length + " signal(s) of " + VCD.sigs.length +
+    "   view " + tLabel(view.t0) + " … " + tLabel(view.t1) +
+    "   cursor " + tLabel(view.cursor) + d;
+}
+
+var raf = 0;
+function draw() {
+  if (raf) { return; }
+  raf = window.requestAnimationFrame(function () {
+    raf = 0;
+    var w = Math.max(60, ui.cwrap.clientWidth);
+    drawRuler(w); drawWave(w); drawNames(); status();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 6. Interaction.
+// ---------------------------------------------------------------------------
+ui.cwrap.addEventListener("mousedown", function (e) {
+  var r = ui.wave.getBoundingClientRect();
+  var t = tOf(e.clientX - r.left, r.width);
+  if (e.shiftKey) { view.marker = t; } else { view.cursor = t; }
+  draw();
+});
+ui.ruler.addEventListener("mousedown", function (e) {
+  var r = ui.ruler.getBoundingClientRect();
+  var t = tOf(e.clientX - r.left, r.width);
+  if (e.shiftKey) { view.marker = t; } else { view.cursor = t; }
+  draw();
+});
+ui.cwrap.addEventListener("wheel", function (e) {
+  if (!e.ctrlKey && !e.altKey && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { return; }
+  e.preventDefault();
+  var r = ui.wave.getBoundingClientRect();
+  var a = tOf(e.clientX - r.left, r.width);
+  zoom(e.deltaY > 0 ? 1.25 : 0.8, a);
+}, { passive: false });
+
+ui.names.addEventListener("click", function (e) {
+  var row = e.target;
+  while (row && row !== ui.names && !row.getAttribute("data-i")) { row = row.parentNode; }
+  if (!row || row === ui.names) { return; }
+  shown.splice(parseInt(row.getAttribute("data-i"), 10), 1);
+  renderTree(); draw();
+});
+
+document.addEventListener("keydown", function (e) {
+  if (e.target && e.target.tagName === "INPUT") { return; }
+  var k = e.key;
+  if (k === "+" || k === "=") { zoom(0.7); }
+  else if (k === "-" || k === "_") { zoom(1.4); }
+  else if (k === "0") { fit(); }
+  else if (k === "ArrowRight") { pan(0.15); }
+  else if (k === "ArrowLeft") { pan(-0.15); }
+  else { return; }
+  e.preventDefault();
+});
+
+document.getElementById("zin").onclick = function () { zoom(0.7); };
+document.getElementById("zout").onclick = function () { zoom(1.4); };
+document.getElementById("zfit").onclick = fit;
+document.getElementById("clear").onclick = function () { shown = []; renderTree(); draw(); };
+document.getElementById("reset").onclick = function () { defaultView(); renderTree(); draw(); };
+ui.filter.oninput = renderTree;
+ui.radix.onchange = draw;
+window.addEventListener("resize", draw);
+
+// ---------------------------------------------------------------------------
+// 7. Go.
+// ---------------------------------------------------------------------------
+(function provenance() {
+  var m = META || {}, bits = [];
+  if (m.dump)      { bits.push("dump <b>" + esc(m.dump) + "</b>"); }
+  if (m.dumpBytes) { bits.push(esc(m.dumpBytes) + " B FST → " +
+                               esc(m.vcdBytes) + " B VCD"); }
+  bits.push(VCD.sigs.length + " signals, " + VCD.changes + " value changes, " +
+            VCD.tMax + tsUnit() + " @ " + esc(VCD.timescale));
+  if (m.layout)    { bits.push("defaults from <b>" + esc(m.layout) + "</b>"); }
+  if (m.generated) { bits.push(esc(m.generated)); }
+  ui.prov.innerHTML = bits.join(" &middot; ") +
+    ' &middot; <span class="pill">offline: no CDN, no external fetch</span>';
+})();
+
+defaultView();
+renderTree();
+fit();
+view.cursor = 0;
+draw();
+
+})();
+</script>
+</body>
+</html>
