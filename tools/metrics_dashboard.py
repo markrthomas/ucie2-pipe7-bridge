@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Regenerate ``metrics/dashboard.html`` from ``metrics/metrics.db``.
 
-Phase F increment 4 + Phase G increment 1. ADDITIVE and OUTSIDE the sacred gate:
-this reads the metrics database only and writes one HTML file. It never runs a
-DV tier, never touches RTL/dv, and cannot perturb the byte-identical per-cycle
-trace.
+Phase F increment 4 + Phase G increments 1-2. ADDITIVE and OUTSIDE the sacred
+gate: this reads the metrics database only and writes one HTML file. It never
+runs a DV tier, never touches RTL/dv, and cannot perturb the byte-identical
+per-cycle trace.
 
 The output is a **single self-contained** file: all CSS is inlined in a
-``<style>`` block, the trend charts are inline ``<svg>`` polylines drawn here
-(no chart library), and there is **no CDN, no external fetch, no <script src>**.
-Double-clicking the file renders it fully offline.
+``<style>`` block, the filter/sort behaviour is a dependency-free ES5 snippet
+inlined in a ``<script>`` block, the trend charts are inline ``<svg>`` polylines
+drawn here (no chart library), and there is **no CDN, no external fetch, no
+``<script src>``, no ``<link>``, no ``@import``, no ``url(...)``**. Double-clicking
+the file renders it fully offline; :func:`external_refs` re-checks that on every
+generation and the ``[DASH]`` banner prints the count.
 
 Phase G increment 1 adds:
 
@@ -20,6 +23,18 @@ Phase G increment 1 adds:
   rendered from its own ``*_source`` and shown as "—" when never measured.
 * **Regression badge** — the advisory flags ``tools/metrics_collect.py`` stored
   on the row. Display only: this script has no exit-status opinion about them.
+
+Phase G increment 2 adds (display only — the store is untouched):
+
+* **Filterable / sortable run history** — a free-text filter plus branch, env
+  and "measured rows only" controls, and click-to-sort on every column, driven
+  by the inlined script. With JavaScript disabled the table still renders in
+  full, just unsorted and unfiltered.
+* **Per-tier drill-down** — one ``<details>`` panel per tier with that tier's
+  own history, signals and ``*_source`` per row (no JS needed).
+* **``git_sha`` -> commit links** — resolved once at generation time from
+  ``git remote get-url origin`` (override with ``--repo-url``, disable with
+  ``--repo-url ''``). These are ``<a href>`` navigation links, not fetches.
 
 Rows written before the v2 migration simply lack the new columns; every read
 goes through :func:`get`, so an un-migrated v1 database still renders.
@@ -36,7 +51,9 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import html
+import re
 import sqlite3
+import subprocess
 import sys
 from pathlib import Path
 
@@ -114,11 +131,164 @@ tbody tr:hover{background:rgba(255,255,255,.03)}
 .legend{color:var(--dim);font-size:12px;line-height:1.9}
 footer{color:var(--dim);font-size:12px;margin-top:34px;border-top:1px solid var(--line);
  padding-top:14px}
+
+/* --- Phase G increment 2: filter/sort toolbar, drill-down, commit links --- */
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.toolbar input[type=text],.toolbar select{background:var(--panel2);color:var(--fg);
+ border:1px solid var(--line);border-radius:6px;padding:6px 9px;font:13px/1.4 inherit}
+.toolbar input[type=text]{min-width:230px}
+.toolbar label{color:var(--dim);font-size:12px;display:flex;align-items:center;gap:5px}
+.toolbar button{background:var(--panel2);color:var(--dim);border:1px solid var(--line);
+ border-radius:6px;padding:6px 11px;font:12px/1.4 inherit;cursor:pointer}
+.toolbar button:hover{color:var(--fg)}
+.toolbar .count{margin-left:auto;color:var(--dim);font-size:12px}
+th.sortable{cursor:pointer;-webkit-user-select:none;user-select:none}
+th.sortable:hover{color:var(--fg)}
+th.sortable::after{content:"↕";opacity:.35;font-size:10px;margin-left:5px}
+th.sortable[data-dir=asc]::after{content:"▲";opacity:1;color:#58a6ff}
+th.sortable[data-dir=desc]::after{content:"▼";opacity:1;color:#58a6ff}
+a.sha{color:#58a6ff;text-decoration:none;border-bottom:1px dotted rgba(88,166,255,.55)}
+a.sha:hover{border-bottom-style:solid}
+details.drill{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+ padding:0 16px;margin-bottom:10px}
+details.drill>summary{cursor:pointer;padding:12px 0;font-weight:600;font-size:13.5px;
+ list-style:none;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+details.drill>summary::-webkit-details-marker{display:none}
+details.drill>summary::before{content:"▸";color:var(--dim);display:inline-block}
+details.drill[open]>summary::before{content:"▾"}
+details.drill .sum{color:var(--dim);font-weight:400;font-size:12px}
+details.drill .body{padding:0 0 16px}
+.scroll{overflow-x:auto}
+.nojs{color:var(--dim);font-size:12px;margin:0 0 10px}
+"""
+
+# Inline, dependency-free filter + sort for the history table (Phase G
+# increment 2). Deliberately plain ES5 in a <script> block inside the page:
+# NO CDN, no <script src>, no fetch/XHR — the file still opens offline, and with
+# JavaScript disabled the table below simply renders unfiltered and unsorted.
+JS = """
+(function () {
+  var t = document.getElementById('hist');
+  if (!t || !t.tHead || !t.tBodies.length) { return; }
+  var tb = t.tBodies[0];
+  var rows = Array.prototype.slice.call(tb.rows);
+  var q = document.getElementById('f-text');
+  var br = document.getElementById('f-branch');
+  var ev = document.getElementById('f-env');
+  var me = document.getElementById('f-measured');
+  var cnt = document.getElementById('f-count');
+
+  function apply() {
+    var s = (q.value || '').toLowerCase();
+    var b = br.value, e = ev.value, m = me.checked, n = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var ok = (!s || r.getAttribute('data-search').indexOf(s) >= 0)
+            && (b === '*' || r.getAttribute('data-branch') === b)
+            && (e === '*' || r.getAttribute('data-env') === e)
+            && (!m || r.getAttribute('data-source') === 'measured');
+      r.style.display = ok ? '' : 'none';
+      if (ok) { n++; }
+    }
+    cnt.textContent = n + ' of ' + rows.length + ' run(s) shown';
+  }
+
+  function key(td) {
+    var v = td.getAttribute('data-v');
+    if (v === null) { v = (td.textContent || '').trim(); }
+    if (v !== '' && /^-?[0-9]+(\\.[0-9]+)?$/.test(v)) { return parseFloat(v); }
+    return v.toLowerCase();
+  }
+
+  var head = t.tHead.rows[0];
+  var dir = {};
+  for (var c = 0; c < head.cells.length; c++) {
+    (function (th, idx) {
+      th.className += ' sortable';
+      th.tabIndex = 0;
+      th.title = 'sort by ' + (th.textContent || '').trim();
+      function sort() {
+        var d = dir[idx] = (dir[idx] === 1 ? -1 : 1);
+        for (var k = 0; k < head.cells.length; k++) {
+          head.cells[k].removeAttribute('data-dir');
+        }
+        th.setAttribute('data-dir', d === 1 ? 'asc' : 'desc');
+        rows.sort(function (a, b) {
+          var x = key(a.cells[idx]), y = key(b.cells[idx]);
+          if (x < y) { return -d; }
+          if (x > y) { return d; }
+          return 0;
+        });
+        for (var j = 0; j < rows.length; j++) { tb.appendChild(rows[j]); }
+      }
+      th.onclick = sort;
+      th.onkeydown = function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sort(); }
+      };
+    })(head.cells[c], c);
+  }
+
+  q.oninput = apply;
+  br.onchange = apply;
+  ev.onchange = apply;
+  me.onchange = apply;
+  var rst = document.getElementById('f-reset');
+  if (rst) {
+    rst.onclick = function () {
+      q.value = ''; br.value = '*'; ev.value = '*'; me.checked = false; apply();
+    };
+  }
+  apply();
+})();
 """
 
 
 def esc(value) -> str:
     return html.escape("" if value is None else str(value))
+
+
+# --------------------------------------------------------------------------
+# git_sha -> commit URL (Phase G increment 2)
+#
+# Derived once, at GENERATION time, from `git remote get-url origin`; the page
+# itself never talks to the network. The resulting <a href> is an ordinary
+# navigation link the reader may click — not a fetch, not a script source, not a
+# stylesheet: the dashboard still renders completely offline.
+# --------------------------------------------------------------------------
+_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+
+
+def repo_url(explicit: str | None = None):
+    """Base web URL of the origin remote (no trailing slash), or None."""
+    if explicit:
+        return explicit.rstrip("/") or None
+    try:
+        out = subprocess.run(["git", "-C", str(ROOT), "remote", "get-url", "origin"],
+                             capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):       # pragma: no cover
+        return None
+    if out.returncode != 0:
+        return None
+    url = out.stdout.strip()
+    if not url:
+        return None
+    if url.startswith("git@"):                          # git@host:owner/repo.git
+        host, _, path = url[4:].partition(":")
+        url = f"https://{host}/{path}"
+    elif url.startswith("ssh://git@"):
+        url = "https://" + url[len("ssh://git@"):]
+    if not url.startswith("http"):                      # unknown scheme: no link
+        return None
+    return url[:-4].rstrip("/") if url.endswith(".git") else url.rstrip("/")
+
+
+def commit_link(sha, base) -> str:
+    """`sha` as a link to its commit page, or just the escaped sha."""
+    text = esc(sha)
+    if not base or not sha or not _SHA_RE.match(str(sha)):
+        return text
+    return (f'<a class="sha" href="{esc(base)}/commit/{text}" target="_blank" '
+            f'rel="noopener noreferrer">{text}</a>')
 
 
 def get(row: sqlite3.Row, key: str, default=None):
@@ -179,6 +349,107 @@ def tier_detail(row: sqlite3.Row, key: str) -> str:
     return ""
 
 
+# --------------------------------------------------------------------------
+# Per-tier drill-down (Phase G increment 2)
+#
+# One <details> per tier: its own history, its own signals, its own sources.
+# Plain HTML disclosure widgets — they work with JavaScript disabled, and a
+# value that was never measured stays "—" rather than being back-filled.
+# --------------------------------------------------------------------------
+DRILL_HEADERS = {
+    "pyuvm": ["rt cycles"],
+    "fcov": ["bins", "fcov %"],
+    "trace_compare": ["identical cycles"],
+    "coverage": ["line %", "branch %"],
+    "formal": ["jobs", "bmc depth", "per-job depth (measured only)"],
+}
+
+
+def num_td(value, text, *, raw=False) -> str:
+    """A table cell whose sort key is `value` (empty when never measured)."""
+    dv = "" if value is None else str(value)
+    return f'<td data-v="{esc(dv)}">{text if raw else esc(text)}</td>'
+
+
+def sig_cell(value, source, fmt="{}") -> str:
+    """One signal, honest about where it came from."""
+    if value is None:
+        return '<span class="s-notrun">—</span>'
+    txt = esc(fmt.format(value))
+    if source == "estimated":
+        return (f'<span class="s-est">{txt}*</span>'
+                f'<span class="badge estimated">est</span>')
+    return txt
+
+
+def drill_cells(key: str, row: sqlite3.Row, jobs_by_run: dict) -> list:
+    """Tier-specific signal cells for one row of the drill-down table."""
+    if key == "pyuvm":
+        return [sig_cell(get(row, "roundtrip_cycles"),
+                         get(row, "roundtrip_cycles_source", "none"))]
+    if key == "fcov":
+        bins = (f"{row['fcov_bins_hit']}/{row['fcov_bins_total']}"
+                if row["fcov_bins_total"] else None)
+        return [sig_cell(bins, row["fcov_source"]),
+                sig_cell(row["fcov_pct"], row["fcov_source"], "{:.1f}%")]
+    if key == "trace_compare":
+        return [sig_cell(row["trace_cycles"], row["trace_compare_source"])]
+    if key == "coverage":
+        return [sig_cell(row["coverage_line_pct"], row["coverage_source"], "{:.1f}%"),
+                sig_cell(get(row, "coverage_branch_pct"),
+                         get(row, "coverage_branch_source", "none"), "{:.1f}%")]
+    if key == "formal":
+        jobs = (f"{row['formal_jobs_passed']}/{row['formal_jobs_total']}"
+                if row["formal_jobs_total"] else None)
+        per = jobs_by_run.get(row["id"], [])
+        per_txt = (", ".join(
+            f'<code>{esc(j["job"])}</code> '
+            f'≤{esc(j["depth"]) if j["depth"] is not None else "?"} '
+            f'{esc(j["status"])}' for j in per)
+            if per else '<span class="s-notrun">—</span>')
+        return [sig_cell(jobs, row["formal_source"]),
+                sig_cell(get(row, "formal_depth_max"),
+                         get(row, "formal_depth_source", "none"), "≤{}"),
+                per_txt]
+    return []
+
+
+def drilldowns(rows, jobs_by_run: dict, base_url) -> str:
+    """A collapsible per-tier history for every tier."""
+    out = []
+    for key, name, desc in TIERS:
+        extra = DRILL_HEADERS.get(key, [])
+        measured = sum(1 for r in rows if r[f"{key}_source"] == "measured")
+        est = sum(1 for r in rows if r[f"{key}_source"] == "estimated")
+        latest_st = rows[0][f"{key}_status"]
+        head = ("<tr><th>#</th><th>timestamp (UTC)</th><th>sha</th><th>branch</th>"
+                "<th>env</th><th>status</th><th>source</th><th>secs</th>"
+                + "".join(f"<th>{esc(h)}</th>" for h in extra) + "</tr>")
+        body = []
+        for r in rows:
+            st, src = r[f"{key}_status"], r[f"{key}_source"]
+            cls = "s-est" if src == "estimated" else f"s-{status_class(st)}"
+            body.append(
+                f'<tr><td>{r["id"]}</td><td class="mono">{esc(r["ts_utc"])}</td>'
+                f'<td class="mono">{commit_link(r["git_sha"], base_url)}</td>'
+                f'<td class="mono">{esc(r["git_branch"])}</td>'
+                f'<td>{esc(r["env"])}</td>'
+                f'<td class="{cls}">{esc(st)}{"*" if src == "estimated" else ""}</td>'
+                f'<td><span class="badge {src}">{esc(src)}</span></td>'
+                f'<td>{esc(fmt_secs(r[f"{key}_secs"]))}</td>'
+                + "".join(f"<td>{c}</td>" for c in drill_cells(key, r, jobs_by_run))
+                + "</tr>")
+        summary = (f'{esc(name)} <span class="pill {status_class(latest_st)}">'
+                   f'{esc(latest_st)}</span>'
+                   f'<span class="sum">{esc(desc)} · {measured} measured'
+                   + (f", {est} carried forward" if est else "")
+                   + f' of {len(rows)} row(s)</span>')
+        out.append(f'<details class="drill"><summary>{summary}</summary>'
+                   f'<div class="body scroll"><table><thead>{head}</thead>'
+                   f'<tbody>{"".join(body)}</tbody></table></div></details>')
+    return "".join(out)
+
+
 def sparkline(values, *, width=300, height=64, pad=8, fmt="{:.1f}") -> str:
     """Inline SVG polyline drawn from scratch. `values` may contain None."""
     pts = [(i, v) for i, v in enumerate(values) if v is not None]
@@ -224,7 +495,9 @@ def chart(title: str, unit: str, values, fmt="{:.1f}") -> str:
             f'<div class="r">{esc(rng)}</div>{sparkline(values, fmt=fmt)}</div>')
 
 
-def render(rows, branch_rows, formal_jobs, db_path: Path) -> str:
+def render(rows, branch_rows, formal_jobs, db_path: Path,
+           jobs_by_run=None, base_url=None) -> str:
+    jobs_by_run = jobs_by_run or {}
     latest = rows[0]
     # Trends follow ONE branch (the latest row's), so a feature branch is never
     # silently compared against main. Oldest -> newest for the charts.
@@ -264,7 +537,9 @@ def render(rows, branch_rows, formal_jobs, db_path: Path) -> str:
             st, src = r[f"{key}_status"], r[f"{key}_source"]
             cls = "s-est" if src == "estimated" else f"s-{status_class(st)}"
             mark = "*" if src == "estimated" else ""
-            cells.append(f'<td class="{cls}">{esc(st)}{mark}</td>')
+            # data-v drives the inline sorter; the '*' stays visual only, so an
+            # estimated row still sorts with its own status.
+            cells.append(f'<td class="{cls}" data-v="{esc(st)}">{esc(st)}{mark}</td>')
         cov = ("—" if r["coverage_line_pct"] is None
                else f"{r['coverage_line_pct']:.1f}%")
         covb = ("—" if get(r, "coverage_branch_pct") is None
@@ -281,21 +556,57 @@ def render(rows, branch_rows, formal_jobs, db_path: Path) -> str:
                else f"{r['collect_peak_rss_mb']:.0f}M")
         nr = get(r, "regressions")
         reg = ("—" if nr is None
-               else f'<span class="s-pass">0</span>' if nr == 0
+               else '<span class="s-pass">0</span>' if nr == 0
                else f'<span class="s-fail">{nr}</span>')
         dirty = " <span class='badge estimated'>dirty</span>" if r["git_dirty"] else ""
+        # Free-text filter haystack: what the reader can see on the row.
+        hay = " ".join(str(x) for x in (
+            r["id"], r["ts_utc"], r["git_sha"], r["git_branch"], r["env"],
+            r["source"], "dirty" if r["git_dirty"] else "",
+            *(f'{n}:{r[f"{k}_status"]}' for k, n, _ in TIERS),
+        )).lower()
         body.append(
-            f'<tr><td>{r["id"]}</td><td class="mono">{esc(r["ts_utc"])}</td>'
-            f'<td class="mono">{esc(r["git_sha"])}{dirty}</td>'
+            f'<tr data-search="{esc(hay)}" data-branch="{esc(r["git_branch"])}" '
+            f'data-env="{esc(r["env"])}" data-source="{esc(r["source"])}">'
+            f'<td data-v="{r["id"]}">{r["id"]}</td>'
+            f'<td class="mono">{esc(r["ts_utc"])}</td>'
+            f'<td class="mono" data-v="{esc(r["git_sha"])}">'
+            f'{commit_link(r["git_sha"], base_url)}{dirty}</td>'
             f'<td class="mono">{esc(r["git_branch"])}</td><td>{esc(r["env"])}</td>'
-            f'<td><span class="badge {"estimated" if r["source"] != "measured" else "measured"}">'
+            f'<td data-v="{esc(r["source"])}">'
+            f'<span class="badge {"estimated" if r["source"] != "measured" else "measured"}">'
             f'{esc(r["source"])}</span></td>'
             + "".join(cells)
-            + f'<td>{esc(cov)}</td><td>{esc(covb)}</td><td>{esc(fc)}</td>'
-            f'<td>{esc(fm)}</td><td>{depth}</td><td>{esc(rtc)}</td>'
-            f'<td>{esc(fmt_secs(r["total_secs"]))}</td><td>{esc(rss)}</td>'
-            f'<td>{reg}</td></tr>'
+            + num_td(r["coverage_line_pct"], cov)
+            + num_td(get(r, "coverage_branch_pct"), covb)
+            + num_td(r["fcov_pct"], fc)
+            + num_td(r["formal_jobs_passed"] if r["formal_jobs_total"] else None, fm)
+            + num_td(get(r, "formal_depth_max"), depth, raw=True)
+            + num_td(get(r, "roundtrip_cycles"), rtc)
+            + num_td(r["total_secs"], fmt_secs(r["total_secs"]))
+            + num_td(get(r, "collect_peak_rss_mb"), rss)
+            + num_td(nr, reg, raw=True)
+            + '</tr>'
         )
+
+    branches = sorted({r["git_branch"] for r in rows})
+    envs = sorted({r["env"] for r in rows})
+    toolbar = (
+        '<div class="toolbar">'
+        '<input type="text" id="f-text" placeholder="filter: sha, branch, env, status…" '
+        'aria-label="filter runs">'
+        '<label>branch <select id="f-branch"><option value="*">all</option>'
+        + "".join(f'<option value="{esc(b)}">{esc(b)}</option>' for b in branches)
+        + '</select></label>'
+        '<label>env <select id="f-env"><option value="*">all</option>'
+        + "".join(f'<option value="{esc(e)}">{esc(e)}</option>' for e in envs)
+        + '</select></label>'
+        '<label><input type="checkbox" id="f-measured"> measured rows only</label>'
+        '<button type="button" id="f-reset">reset</button>'
+        f'<span class="count" id="f-count">{len(rows)} of {len(rows)} run(s) shown</span>'
+        '</div>'
+    )
+    drill = drilldowns(rows, jobs_by_run, base_url)
 
     def series(col, src_col=None):
         """History of one column, keeping only points that were MEASURED."""
@@ -363,17 +674,21 @@ def render(rows, branch_rows, formal_jobs, db_path: Path) -> str:
 <style>{CSS}</style></head>
 <body><div class="wrap">
 <h1>ucie2-pipe7-bridge — DV metrics</h1>
-<p class="sub">Self-contained dashboard (no CDN, no external fetch) generated by
+<p class="sub">Self-contained dashboard — CSS, JavaScript and SVG all inlined,
+<b>no CDN and no external fetch</b> — generated by
 <code>tools/metrics_dashboard.py</code> from <code>{esc(db_path.name)}</code> at
 {esc(gen)}. Post-gate and advisory: nothing here runs, gates, or perturbs
-<code>lint / pyuvm / fcov / uvm / trace-compare</code>.</p>
+<code>lint / pyuvm / fcov / uvm / trace-compare</code>.
+{'The only outbound URLs are the <code>git_sha</code> commit links below: ordinary '
+ '<code>&lt;a href&gt;</code> navigation you may click, never something the page loads.'
+ if base_url else 'No commit links: no <code>origin</code> remote was resolvable at generation time.'}</p>
 
 <h2>Latest run</h2>
 <div class="card">
   <div class="meta">
     <div>run<b>#{latest["id"]}</b></div>
     <div>timestamp<b class="mono">{esc(latest["ts_utc"])}</b></div>
-    <div>commit<b class="mono">{esc(latest["git_sha"])}{" (dirty)" if latest["git_dirty"] else ""}</b></div>
+    <div>commit<b class="mono">{commit_link(latest["git_sha"], base_url)}{" (dirty)" if latest["git_dirty"] else ""}</b></div>
     <div>branch<b class="mono">{esc(latest["git_branch"])}</b></div>
     <div>env<b>{esc(latest["env"])}</b></div>
     <div>row source<b>{esc(latest["source"])}</b></div>
@@ -396,7 +711,13 @@ restricted to this one branch.</p>
 <div class="charts">{charts}</div>
 
 <h2>History ({len(rows)} run(s))</h2>
-<div class="card"><table><thead>{head}</thead><tbody>{"".join(body)}</tbody></table>
+<div class="card">
+<p class="nojs">Type to filter, or click any column heading to sort (click again
+to reverse). Filtering and sorting are done by the inlined script below — with
+JavaScript off the full table still renders, just unsorted and unfiltered.</p>
+{toolbar}
+<div class="scroll"><table id="hist"><thead>{head}</thead>
+<tbody>{"".join(body)}</tbody></table></div>
 <p class="legend">
 <span class="badge measured">measured</span> the tier ran for this row and this
 banner is its own output.<br>
@@ -409,15 +730,57 @@ heavy for that host). Never counted as a failure, and no number is invented.<br>
 prior <b>measured</b> row on the same branch (coverage/depth/cycle drop, a
 runtime that at least doubled AND grew &ge;5 s, or a tier going pass&rarr;fail).
 <b>Advisory only</b> — it never fails <code>make metrics</code>,
-<code>make dashboard</code>, or any gate. "—" = the row predates the check.
+<code>make dashboard</code>, or any gate. "—" = the row predates the check.<br>
+<span class="badge measured">sha</span> the <code>git_sha</code> column links to
+that commit{' on <code>' + esc(base_url) + '</code>' if base_url else ''} — a
+plain navigation link, not a fetch.
 </p></div>
 
-<footer>Phase F increment 4 + Phase G increment 1 — <code>make metrics</code>
-appends a row, <code>make dashboard</code> regenerates this file. Both are
+<h2>Per-tier drill-down</h2>
+<p class="sub">One collapsible panel per tier: its full history with its own
+signals and its own <code>*_source</code> per row. A signal that was never
+measured shows <span class="s-notrun">—</span>; a carried-forward one is starred
+and badged <span class="badge estimated">est</span> — it is never back-filled
+into a measured claim.</p>
+{drill}
+
+<footer>Phase F increment 4 + Phase G increments 1–2 — <code>make metrics</code>
+appends a row (<code>--once-per-sha</code> makes that idempotent, so CI can
+commit it back), <code>make dashboard</code> regenerates this file. Both are
 additive and outside the gate. Store: <code>metrics/metrics.db</code> (schema:
 <code>metrics/schema.sql</code>, <code>user_version = 2</code>).</footer>
-</div></body></html>
+</div>
+<script>{JS}</script>
+</body></html>
 """
+
+
+# --------------------------------------------------------------------------
+# Self-containment guard (Phase G increment 2)
+#
+# Everything that would make the browser LOAD something. Plain `<a href>`
+# navigation (the commit links) is deliberately NOT on this list: clicking a
+# link is the reader's choice, not the page fetching anything to render itself.
+# The banner reports the count, so the "no CDN / no external fetch" claim in the
+# docs is checkable rather than asserted.
+# --------------------------------------------------------------------------
+EXTERNAL_PATTERNS = (
+    ("<script src=",    re.compile(r"<script[^>]*\ssrc\s*=", re.I)),
+    ("<link ...>",      re.compile(r"<link\b", re.I)),
+    ("@import",         re.compile(r"@import", re.I)),
+    ("css url(...)",    re.compile(r"url\s*\(", re.I)),
+    ("<img/iframe/object/embed",
+     re.compile(r"<(?:img|iframe|object|embed)\b", re.I)),
+    ("fetch()/XHR",     re.compile(r"\bfetch\s*\(|XMLHttpRequest|importScripts",
+                                   re.I)),
+    ("srcset",          re.compile(r"\bsrcset\s*=", re.I)),
+)
+
+
+def external_refs(page: str) -> list:
+    """[(kind, count)] for every construct that would load an external asset."""
+    return [(name, len(rx.findall(page)))
+            for name, rx in EXTERNAL_PATTERNS if rx.search(page)]
 
 
 def main(argv=None) -> int:
@@ -426,7 +789,12 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--limit", type=int, default=50,
                     help="most recent N rows to show (default 50)")
+    ap.add_argument("--repo-url", default=None,
+                    help="base web URL for git_sha -> commit links (default: "
+                         "derived from `git remote get-url origin`; pass an "
+                         "empty string to disable the links entirely)")
     args = ap.parse_args(argv)
+    base_url = None if args.repo_url == "" else repo_url(args.repo_url)
 
     if not args.db.exists():
         print(f"[DASH] ERROR: no metrics database at {args.db} — "
@@ -453,21 +821,37 @@ def main(argv=None) -> int:
             "ORDER BY job", (rows[0]["id"],)).fetchall()
     except sqlite3.Error:
         formal_jobs = []
+    # Per-job depths for EVERY shown run, for the formal drill-down.
+    jobs_by_run: dict = {}
+    try:
+        for j in conn.execute(
+                "SELECT run_id, job, depth, status FROM formal_jobs ORDER BY job"):
+            jobs_by_run.setdefault(j["run_id"], []).append(j)
+    except sqlite3.Error:
+        jobs_by_run = {}
     conn.close()
 
+    page = render(rows, branch_rows, formal_jobs, args.db,
+                  jobs_by_run=jobs_by_run, base_url=base_url)
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(render(rows, branch_rows, formal_jobs, args.db),
-                        encoding="utf-8")
+    args.out.write_text(page, encoding="utf-8")
     try:
         shown = args.out.relative_to(ROOT)
     except ValueError:
         shown = args.out
+    ext = external_refs(page)
     print(f"[DASH] wrote {shown} ({args.out.stat().st_size} bytes, "
-          f"{len(rows)} of {total} row(s), self-contained: no CDN/JS/external fetch)")
+          f"{len(rows)} of {total} row(s), self-contained: inline CSS/JS/SVG, "
+          f"{len(ext)} external resource ref(s))")
+    for kind, hits in ext:
+        print(f"[DASH]   ! {hits} x {kind}")
     nreg = get(rows[0], "regressions")
     print(f"[DASH] trends: branch {rows[0]['git_branch']} "
           f"({len(branch_rows)} run(s)), inline SVG; regressions: "
           f"{'n/a (pre-v2 row)' if nreg is None else f'{nreg} (advisory)'}")
+    print(f"[DASH] ux: filter+sort over {len(rows)} row(s), "
+          f"{len(TIERS)} tier drill-down(s), commit links "
+          f"{'-> ' + base_url if base_url else 'disabled (no origin remote)'}")
     return 0
 
 

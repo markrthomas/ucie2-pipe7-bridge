@@ -2,7 +2,8 @@
 """Collect one DV-metrics row into ``metrics/metrics.db``.
 
 Phase F increment 4 (the store) + Phase G increment 1 (more signals, trends,
-advisory regression flags).
+advisory regression flags) + Phase G increment 2 (``--once-per-sha``, so CI can
+auto-commit the appended row without duplicating it on a re-run).
 
 ADDITIVE and OUTSIDE the sacred gate. This script never edits RTL, never touches
 the trace emitters (``dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv``,
@@ -16,6 +17,7 @@ Usage
     python3 tools/metrics_collect.py --run lint,pyuvm   # only these
     python3 tools/metrics_collect.py --run none --log lint=lint.log
     python3 tools/metrics_collect.py --carry-forward    # fill gaps as ESTIMATED
+    python3 tools/metrics_collect.py --once-per-sha     # idempotent (CI push-to-main)
 
 Honesty rules (mirrored in metrics/schema.sql)
 ---------------------------------------------
@@ -47,6 +49,17 @@ a coverage/depth/cycle-count drop, or a runtime blow-up. The count is printed as
 ``[METRICS] regressions: N`` and stored in ``runs.regressions`` for the
 dashboard badge. It **never** changes the exit status of ``make metrics``, and
 nothing on the gate reads it.
+
+Idempotent append (Phase G increment 2) — ``--once-per-sha``
+------------------------------------------------------------
+With ``--once-per-sha`` the collector first asks the store whether this exact
+``(git_sha, env)`` pair already has a row. If it does — and the working tree is
+clean, so the sha really does describe the content — nothing is run and nothing
+is appended: it prints ``[METRICS] up to date: …`` and exits 0. That makes
+``make metrics`` safe to drive from a push-triggered CI job that commits the
+result back: a re-run of the same workflow (or a ``[skip ci]`` follow-up) is a
+clean no-op instead of a duplicate row. Off by default, so a maintainer running
+``make metrics`` twice on the same commit still gets two honest rows.
 
 Stdlib only (``sqlite3`` module — the ``sqlite3`` CLI is not required).
 """
@@ -356,6 +369,31 @@ def last_measured(conn: sqlite3.Connection, tier: str):
     return cur.fetchone()
 
 
+def already_recorded(db_path: Path, schema_path: Path, sha: str, env: str):
+    """Newest row for this exact (git_sha, env) that was written from a CLEAN
+    tree, or None (Phase G increment 2, ``--once-per-sha``).
+
+    Read-only and best-effort: an unreadable/absent store simply means "not
+    recorded yet", so the caller falls through and collects normally. A row that
+    was written from a dirty tree does not count — its sha did not describe its
+    content, so it cannot stand in for a clean measurement of that commit.
+    """
+    if sha in ("", "unknown") or not db_path.exists():
+        return None
+    try:
+        conn = open_db(db_path, schema_path)
+    except sqlite3.Error:
+        return None
+    try:
+        return conn.execute(
+            "SELECT id, ts_utc FROM runs WHERE git_sha = ? AND env = ? "
+            "AND git_dirty = 0 ORDER BY id DESC LIMIT 1", (sha, env)).fetchone()
+    except sqlite3.Error:
+        return None
+    finally:
+        conn.close()
+
+
 def peak_rss_mb():
     """Peak RSS of this process or its heaviest child, in MiB (None if N/A)."""
     if _resource is None:
@@ -503,6 +541,10 @@ def main(argv=None) -> int:
     ap.add_argument("--carry-forward", action="store_true",
                     help="fill not-run tiers from the newest measured row and "
                          "tag them source='estimated' (off by default)")
+    ap.add_argument("--once-per-sha", action="store_true",
+                    help="no-op (exit 0, nothing run, nothing appended) when "
+                         "this (git_sha, env) already has a row and the tree is "
+                         "clean; for CI jobs that commit the row back")
     ap.add_argument("--note", default=None, help="free-text note for this row")
     ap.add_argument("--make", default=os.environ.get("MAKE") or "make")
     ap.add_argument("--make-arg", action="append", default=[],
@@ -542,6 +584,18 @@ def main(argv=None) -> int:
     for pairs in TIER_SIGNAL_SOURCES.values():
         for src_col, _value_col in pairs:
             row[src_col] = "none"
+
+    # Idempotent append (Phase G increment 2). Checked BEFORE any tier runs, so
+    # a re-run of a push-triggered CI job costs nothing. Only honoured on a
+    # clean tree: with uncommitted changes the sha does not describe what would
+    # be measured, so the row is a genuinely new observation and is appended.
+    if args.once_per_sha and not row["git_dirty"]:
+        prior = already_recorded(args.db, args.schema, row["git_sha"], row["env"])
+        if prior is not None:
+            print(f"[METRICS] up to date: sha {row['git_sha']} (env={row['env']}) "
+                  f"already recorded as row #{prior['id']} "
+                  f"({prior['ts_utc']}) — nothing run, nothing appended")
+            return 0
 
     notes = []
     formal_jobs = []
