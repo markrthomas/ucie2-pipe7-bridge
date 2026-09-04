@@ -131,7 +131,10 @@ make b2b        # both
 | `b2b-ucie` | `b2b_ucie_pcie_ucie.sv` | **PCIe** link (A.tx_data → B.rx_data) | UCIe/FDI | drive FDI flits into A; recover FDI flits out of B |
 | `b2b-pcie` | `b2b_pcie_ucie_pcie.sv` | **UCIe** FDI seam (A.pl_data → B.lp_data) | PCIe/PIPE | inject a framed PIPE word stream into A.rx_data; recover the re-framed stream out of B.tx_data |
 
-Both are **unidirectional (A→B)** to start; the return path is future work. The
+Each also has a **full-duplex** variant — `make b2b-ucie-fd` / `make b2b-pcie-fd`
+(both folded into `make b2b`) — driving and checking **both directions at once**
+over the joined link (PyUVM tier; verified LEN=8/32). The base configs below are
+**unidirectional (A→B)**; the
 `b2b-pcie` config exercises the RX-inject path flagged in `PLAN.md` §2 — a legal,
 block-aligned PIPE word stream (the independent Python framer's output) is played
 straight into a bridge's deframer.

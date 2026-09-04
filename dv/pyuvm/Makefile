@@ -91,4 +91,5 @@ include $(shell cocotb-config --makefiles)/Makefile.sim
 
 clean::
 	rm -rf sim_build cov_build wave_build b2b_ucie_build b2b_pcie_build \
+	       b2b_ucie_fd_build b2b_pcie_fd_build \
 	       build results.xml coverage.dat dump.vcd dump.fst __pycache__

@@ -88,8 +88,8 @@ else
   SEED_RESOLVED := $(SEED)
 endif
 
-.PHONY: default help lint pyuvm fcov b2b b2b-ucie b2b-pcie lint-b2b-uvm uvm-b2b \
-        lint-uvm uvm trace-compare coverage formal \
+.PHONY: default help lint pyuvm fcov b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
+        lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
@@ -235,7 +235,22 @@ b2b-pcie: gen-vectors
 	  EXTRA_VERILOG=$(HARNESS)/b2b_pcie_ucie_pcie.sv \
 	  SIM_BUILD=$(abspath dv/pyuvm/b2b_pcie_build)
 
-b2b: b2b-ucie b2b-pcie
+# Full-duplex (bidirectional) variants (PLAN H3): both directions live at once,
+# their own wrapper tops + SIM_BUILD. Folded into `b2b` so CI covers them too.
+b2b-ucie-fd: gen-vectors
+	$(LOCAL_ENV) VEC="$(VEC)" RUN_PCLK="$(RUN_PCLK)" $(MAKE) -C dv/pyuvm \
+	  MODULE=test_b2b_ucie_fd TOPLEVEL=b2b_ucie_pcie_ucie_fd \
+	  EXTRA_VERILOG=$(HARNESS)/b2b_ucie_pcie_ucie_fd.sv \
+	  SIM_BUILD=$(abspath dv/pyuvm/b2b_ucie_fd_build)
+
+b2b-pcie-fd: gen-vectors
+	$(LOCAL_ENV) VEC="$(VEC)" VEC_WORDS="$(VEC_WORDS)" RUN_PCLK="$(RUN_PCLK)" \
+	  $(MAKE) -C dv/pyuvm \
+	  MODULE=test_b2b_pcie_fd TOPLEVEL=b2b_pcie_ucie_pcie_fd \
+	  EXTRA_VERILOG=$(HARNESS)/b2b_pcie_ucie_pcie_fd.sv \
+	  SIM_BUILD=$(abspath dv/pyuvm/b2b_pcie_fd_build)
+
+b2b: b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd
 
 # ---- B2B SV UVM tier: elaborate-only locally, full --binary run in CI ---------
 # Same split as the single-bridge UVM tier: `lint-b2b-uvm` elaborates both B2B
