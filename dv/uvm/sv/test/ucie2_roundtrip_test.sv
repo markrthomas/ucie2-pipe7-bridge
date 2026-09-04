@@ -32,6 +32,7 @@ class ucie2_roundtrip_test extends uvm_test;
   task run_phase(uvm_phase phase);
     int          fd;
     string       path;
+    int unsigned run_pclk;
     fdi_flit_seq seq;
     phase.raise_objection(this);
 
@@ -46,6 +47,10 @@ class ucie2_roundtrip_test extends uvm_test;
     vif.rx_data = '0; vif.rx_valid = 0; vif.phy_status = 0;
     vif.rx_status = '0; vif.rx_elec_idle = 0; vif.p2m_message_bus = '0;
 
+    // Run length (cycles to trace/drain). Default = the RUN_PCLK localparam; the
+    // Make flow scales it with the flit count. Read here (zero sim-time, before the
+    // wait/fork) so the fork order and #0.1 sampling below are untouched.
+    if (!$value$plusargs("RUN_PCLK=%d", run_pclk)) run_pclk = RUN_PCLK;
     if (!$value$plusargs("TRACE=%s", path)) path = "bridge.trace";
     fd = $fopen(path, "w");
     if (fd == 0) `uvm_fatal("TRACE", $sformatf("cannot open %s", path));
@@ -75,7 +80,7 @@ class ucie2_roundtrip_test extends uvm_test;
       seq.start(env.agent.seqr);
     join_none
 
-    for (int cyc = 1; cyc < RUN_PCLK; cyc++) begin
+    for (int cyc = 1; cyc < run_pclk; cyc++) begin
       @(posedge vif.pclk); #0.1;
       $fwrite(fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d\n",
         cyc, vif.pl_state_sts, vif.pl_valid, vif.pl_trdy, vif.pl_stallreq,

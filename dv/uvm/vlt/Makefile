@@ -51,6 +51,15 @@ VFLAGS    ?= --binary --timing --vpi --assert -j $(BUILD_JOBS) --build-jobs $(BU
              -Wno-fatal -Wno-TIMESCALEMOD --CFLAGS "$(CFLAGS_MODEL)"
 UVM_PLUSARGS ?= +UVM_NO_RELNOTES
 
+# Default-test stimulus, passed through from the root Makefile. When empty (e.g. a
+# bare `make -C dv/uvm/vlt run`, or the EDA Playground bundle) the SV sequence
+# falls back to its compiled-in directed ramp and the N_FLITS/RUN_PCLK localparams.
+VEC      ?=
+N_FLITS  ?=
+RUN_PCLK ?=
+STIM_PLUSARGS := $(if $(VEC),+VEC=$(VEC)) $(if $(N_FLITS),+N_FLITS=$(N_FLITS)) \
+                 $(if $(RUN_PCLK),+RUN_PCLK=$(RUN_PCLK))
+
 .PHONY: lint run ci clean
 
 # Elaborate-only: the RAM-safe gate that runs on the local host.
@@ -65,7 +74,7 @@ run:
 	mkdir -p $(OBJ)
 	$(VERILATOR) $(VFLAGS) --top-module $(TOP) --Mdir $(OBJ) $(INCS) \
 	  $(UVM_HDR) $(UVM_DPI) $(SRCS)
-	$(OBJ)/V$(TOP) $(UVM_PLUSARGS) +TRACE=$(OBJ)/bridge.trace 2>&1 | tee $(OBJ)/run.log
+	$(OBJ)/V$(TOP) $(UVM_PLUSARGS) $(STIM_PLUSARGS) +TRACE=$(OBJ)/bridge.trace 2>&1 | tee $(OBJ)/run.log
 	@echo "----- UVM report counts -----"
 	@grep -E "UVM_(INFO|WARNING|ERROR|FATAL) :" $(OBJ)/run.log || true
 	@if grep -qE "UVM_(ERROR|FATAL) :[[:space:]]*[1-9]" $(OBJ)/run.log; then \

@@ -101,7 +101,12 @@ comparing two hand-written checkers:
   env consumes the same vectors). One reference implementation of framing,
   credit FC, and datapath timing.
 - **Shared stimulus vectors** in `dv/common/vectors/` — the identical driven
-  sequence feeds both TBs.
+  sequence feeds both TBs. The **default round-trip test is seeded-random with
+  adjustable length**: `gen_vectors.py` writes one `.vec` (profile `random`, fixed
+  seed for reproducibility) that both TBs read (PyUVM `read_vec`, SV `$readmemh`);
+  `make pyuvm LEN=<n> SEED=<s> PROFILE=random|ramp` selects it, `RUN_PCLK`
+  auto-scales. Both FDI drivers honor `pl_trdy` flow control so any length
+  round-trips without dropping flits. `PROFILE=ramp` restores the directed ramp.
 - **Per-cycle trace format:** both TBs emit a canonical cycle-by-cycle trace of
   the DUT's observable interface (RDI + PIPE signals, one line per PCLK) to a
   `*.trace` file. A `tools/trace_compare.py` diffs the PyUVM trace against the

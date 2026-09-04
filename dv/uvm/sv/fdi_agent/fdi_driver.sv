@@ -20,16 +20,22 @@ class fdi_driver extends uvm_driver#(fdi_flit_item);
   // proven stimulus(): request ACTIVE, BRINGUP_LCLK bubbles, then one flit per
   // lclk honoring #0.1 post-edge writes, then deassert.
   virtual task drive();
+    int unsigned n_flits;
+    if (!$value$plusargs("N_FLITS=%d", n_flits)) n_flits = N_FLITS;
     vif.lp_state_req = FDI_ACTIVE;
     repeat (BRINGUP_LCLK) @(posedge vif.lclk);
-    for (int i = 0; i < N_FLITS; i++) begin
+    for (int i = 0; i < n_flits; i++) begin
       seq_item_port.get_next_item(req);          // zero sim time
       #0.1;
       vif.lp_data  = req.data;
       vif.lp_valid = 1'b1;
       vif.lp_irdy  = 1'b1;
-      drv_ap.write(req.data);
-      @(posedge vif.lclk);
+      // FDI flow control: a flit transfers only when lp_valid & lp_irdy & pl_trdy.
+      // Hold it (signals stay asserted) until pl_trdy so a burst longer than the
+      // internal FIFO never drops flits; for short bursts pl_trdy stays high and
+      // the schedule is unchanged. Mirrors the PyUVM driver's pl_trdy gate.
+      do begin @(posedge vif.lclk); #0.1; end while (!vif.pl_trdy);
+      drv_ap.write(req.data);                     // accepted this cycle
       seq_item_port.item_done();                 // zero sim time
     end
     #0.1;

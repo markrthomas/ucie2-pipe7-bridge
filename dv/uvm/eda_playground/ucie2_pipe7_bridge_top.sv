@@ -2064,24 +2064,37 @@ endclass
 typedef uvm_sequencer#(fdi_flit_item) fdi_sequencer;
 // ---- inlined from dv/uvm/sv/fdi_agent/fdi_seq_lib.sv ----
 // -----------------------------------------------------------------------------
-// fdi_seq_lib — FDI directed ramp sequence (PLAN item 13).
+// fdi_seq_lib — FDI flit sequence (PLAN item 13).
 //
-// Mirrors dv/pyuvm/seq_lib/fdi_seq_lib.py. The payload formula is byte-identical
-// to the proven directed round-trip, so the emitted per-cycle trace and the
-// recovered-flit check are unchanged (trace_compare stays green). `include`d at
-// package scope by ucie2_pipe7_uvm_pkg.sv (sees its localparams N_FLITS).
+// Mirrors dv/pyuvm/seq_lib/fdi_seq_lib.py. Stimulus source is data-driven and
+// selected at run time by plusargs so BOTH testbenches drive the identical
+// sequence (trace_compare stays byte-identical):
+//   +VEC=<path>     -> $readmemh a shared .vec (one 128b payload/line), the
+//                      seeded-random or ramp file from dv/common/vectors.
+//   (no +VEC)       -> the compiled-in directed ramp
+//                      (payload[i] = (0x1000+i)<<64 | (0xABCD0000+i)); this keeps
+//                      the self-contained EDA Playground bundle runnable.
+//   +N_FLITS=<n>    -> flit count (default N_FLITS localparam = 8).
+// `include`d at package scope by ucie2_pipe7_uvm_pkg.sv (sees its localparam N_FLITS).
 // -----------------------------------------------------------------------------
 class fdi_flit_seq extends uvm_sequence#(fdi_flit_item);
-  int unsigned n_flits = N_FLITS;
   `uvm_object_utils(fdi_flit_seq)
   function new(string name = "fdi_flit_seq");
     super.new(name);
   endfunction
   virtual task body();
+    int unsigned      n_flits;
+    string            vec;
+    bit               have_vec;
+    logic [FDIW-1:0]  mem [int];   // associative: $readmemh-compatible, unbounded
+    if (!$value$plusargs("N_FLITS=%d", n_flits)) n_flits = N_FLITS;
+    have_vec = $value$plusargs("VEC=%s", vec);
+    if (have_vec) $readmemh(vec, mem);
     for (int i = 0; i < n_flits; i++) begin
       fdi_flit_item it;
       it = fdi_flit_item::type_id::create($sformatf("flit%0d", i));
-      it.data  = (128'(16'h1000 + i) << 64) | 128'(32'hABCD0000 + i);
+      it.data  = have_vec ? mem[i]
+                          : ((128'(16'h1000 + i) << 64) | 128'(32'hABCD0000 + i));
       it.is_os = 1'b0;
       start_item(it);
       finish_item(it);
@@ -2111,16 +2124,22 @@ class fdi_driver extends uvm_driver#(fdi_flit_item);
   // proven stimulus(): request ACTIVE, BRINGUP_LCLK bubbles, then one flit per
   // lclk honoring #0.1 post-edge writes, then deassert.
   virtual task drive();
+    int unsigned n_flits;
+    if (!$value$plusargs("N_FLITS=%d", n_flits)) n_flits = N_FLITS;
     vif.lp_state_req = FDI_ACTIVE;
     repeat (BRINGUP_LCLK) @(posedge vif.lclk);
-    for (int i = 0; i < N_FLITS; i++) begin
+    for (int i = 0; i < n_flits; i++) begin
       seq_item_port.get_next_item(req);          // zero sim time
       #0.1;
       vif.lp_data  = req.data;
       vif.lp_valid = 1'b1;
       vif.lp_irdy  = 1'b1;
-      drv_ap.write(req.data);
-      @(posedge vif.lclk);
+      // FDI flow control: a flit transfers only when lp_valid & lp_irdy & pl_trdy.
+      // Hold it (signals stay asserted) until pl_trdy so a burst longer than the
+      // internal FIFO never drops flits; for short bursts pl_trdy stays high and
+      // the schedule is unchanged. Mirrors the PyUVM driver's pl_trdy gate.
+      do begin @(posedge vif.lclk); #0.1; end while (!vif.pl_trdy);
+      drv_ap.write(req.data);                     // accepted this cycle
       seq_item_port.item_done();                 // zero sim time
     end
     #0.1;
@@ -2280,7 +2299,8 @@ endclass
 //
 // Mirrors the PyUVM BridgeScoreboard: recovered FDI flits (rx_mon) must equal the
 // driven flits (driver.drv_ap), the deframer must reach block_locked with no
-// sync_error, and at least N_FLITS must be recovered. TX word count is tracked
+// sync_error, and at least as many flits as were driven must be recovered (the
+// driven count, so the check tracks any run length). TX word count is tracked
 // for the report. These are exactly the proven directed test's self-checks.
 // The `uvm_analysis_imp_decl macros must precede the class (they define the
 // _exp/_rx/_tx analysis-imp specializations it uses).
@@ -2316,11 +2336,11 @@ class bridge_scoreboard extends uvm_scoreboard;
       `uvm_error("SB", "deframer raised sync_error")
     if (vif.block_locked !== 1'b1)
       `uvm_error("SB", "deframer never reached block_locked")
-    if (rx_q.size() < N_FLITS)
-      `uvm_error("SB", $sformatf("only %0d flits recovered (< %0d)",
-                                 rx_q.size(), N_FLITS))
+    if (rx_q.size() < exp_q.size())
+      `uvm_error("SB", $sformatf("only %0d flits recovered (< %0d driven)",
+                                 rx_q.size(), exp_q.size()))
     else
-      for (int i = 0; i < N_FLITS; i++)
+      for (int i = 0; i < exp_q.size(); i++)
         if (rx_q[i] !== exp_q[i])
           `uvm_error("SB", $sformatf("round-trip mismatch [%0d]: got %h exp %h",
                                      i, rx_q[i], exp_q[i]))
@@ -2399,6 +2419,7 @@ class ucie2_roundtrip_test extends uvm_test;
   task run_phase(uvm_phase phase);
     int          fd;
     string       path;
+    int unsigned run_pclk;
     fdi_flit_seq seq;
     phase.raise_objection(this);
 
@@ -2413,6 +2434,10 @@ class ucie2_roundtrip_test extends uvm_test;
     vif.rx_data = '0; vif.rx_valid = 0; vif.phy_status = 0;
     vif.rx_status = '0; vif.rx_elec_idle = 0; vif.p2m_message_bus = '0;
 
+    // Run length (cycles to trace/drain). Default = the RUN_PCLK localparam; the
+    // Make flow scales it with the flit count. Read here (zero sim-time, before the
+    // wait/fork) so the fork order and #0.1 sampling below are untouched.
+    if (!$value$plusargs("RUN_PCLK=%d", run_pclk)) run_pclk = RUN_PCLK;
     if (!$value$plusargs("TRACE=%s", path)) path = "bridge.trace";
     fd = $fopen(path, "w");
     if (fd == 0) `uvm_fatal("TRACE", $sformatf("cannot open %s", path));
@@ -2442,7 +2467,7 @@ class ucie2_roundtrip_test extends uvm_test;
       seq.start(env.agent.seqr);
     join_none
 
-    for (int cyc = 1; cyc < RUN_PCLK; cyc++) begin
+    for (int cyc = 1; cyc < run_pclk; cyc++) begin
       @(posedge vif.pclk); #0.1;
       $fwrite(fd, "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d\n",
         cyc, vif.pl_state_sts, vif.pl_valid, vif.pl_trdy, vif.pl_stallreq,
