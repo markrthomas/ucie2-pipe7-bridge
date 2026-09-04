@@ -19,6 +19,41 @@ VERILATOR ?= verilator
 IVERILOG  ?= iverilog
 PYTHON    ?= python3
 
+# ---- Local vs CI toolchain autodetect ---------------------------------------
+# The maintainer's WSL box has oss-cad-suite first on PATH (its iverilog/vvp/
+# python shadow the real ones) and exports VERILATOR_ROOT into oss-cad, which
+# breaks the plain gate targets; a from-source UVM Verilator lives at
+# ~/verilator. When BOTH are true we are "local", and the plain gate targets
+# (lint/pyuvm/fcov/lint-uvm/coverage) auto-apply a clean env: the from-source
+# Verilator, /usr/bin/python3 (the interpreter that actually has cocotb/
+# cocotb_coverage/pyuvm), and FCOV via Verilator (system Icarus is too old and
+# oss-cad's Icarus pollutes Python). In CI/Railway (clean PATH, no ~/verilator)
+# this is inert and everything runs canonically (apt verilator/iverilog, Icarus
+# fcov). Force with LOCAL=1 / LOCAL=0; the *-ci targets pin the canonical path.
+LOCAL ?= $(if $(and \
+    $(findstring oss-cad,$(VERILATOR_ROOT)$(shell command -v verilator 2>/dev/null)),\
+    $(wildcard $(HOME)/verilator/bin/verilator)),1,)
+
+ifeq ($(LOCAL),1)
+  LOCAL_PATH         ?= $(HOME)/verilator/bin:$(HOME)/.local/bin:/usr/local/bin:/usr/bin:/bin
+  # Drop oss-cad's VERILATOR_ROOT and put the local toolchain first, so cocotb
+  # submakes find the from-source verilator + the python that has the deps.
+  LOCAL_ENV          := env -u VERILATOR_ROOT PATH="$(LOCAL_PATH):$$PATH"
+  VERILATOR          := $(HOME)/verilator/bin/verilator
+  VERILATOR_COVERAGE := $(HOME)/verilator/bin/verilator_coverage
+  PYTHON             := /usr/bin/python3
+  UVM_HOME           ?= $(HOME)/verilator/test_regress/t/uvm
+  FCOV_SIM           := verilator
+  # Passed to the lint-uvm submake only in local mode, so CI's inherited-env
+  # UVM_HOME is never clobbered with an empty value.
+  LINT_UVM_ARGS      := VERILATOR=$(VERILATOR) UVM_HOME=$(UVM_HOME)
+else
+  LOCAL_ENV     :=
+  LINT_UVM_ARGS :=
+  # Functional-coverage engine: Icarus in CI (independent from Verilator).
+  FCOV_SIM      ?= icarus
+endif
+
 RTL_DIR   := rtl
 RTL_PKG   := $(RTL_DIR)/ucie2_pipe7_pkg.sv
 # Package first (declares types used by the rest), then every other rtl source.
@@ -26,13 +61,10 @@ RTL_SRCS  := $(RTL_PKG) $(filter-out $(RTL_PKG),$(wildcard $(RTL_DIR)/*.sv))
 RTL_TOP   := ucie2_pipe7_bridge
 
 .PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare coverage formal \
+        lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
         railway-swarm-agents swarm clean
-
-# Functional-coverage tier engine: Icarus in CI (independent from Verilator);
-# override locally with `make fcov FCOV_SIM=verilator`.
-FCOV_SIM ?= icarus
 
 default: help
 
@@ -40,8 +72,11 @@ help:
 	@echo "ucie2-pipe7-bridge targets:"
 	@echo "  make lint          RTL strict lint (Verilator -Wall)          [local]"
 	@echo "  make pyuvm         PyUVM-on-cocotb tier                        [local]"
-	@echo "  make fcov          functional coverage (cocotb_coverage/Icarus) [CI; local: FCOV_SIM=verilator]"
+	@echo "  make fcov          functional coverage (cocotb_coverage)        [local]"
 	@echo "  make lint-uvm      elaborate-only lint of the SV UVM env       [local]"
+	@echo "  (lint/pyuvm/fcov/lint-uvm/coverage auto-detect this oss-cad box and run"
+	@echo "   a clean local env; append -ci — e.g. 'make fcov-ci' — or LOCAL=0 to force"
+	@echo "   the canonical CI toolchain; LOCAL=1 forces local.)"
 	@echo "  make uvm           full SV UVM --binary build+run              [CI/Railway]"
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
 	@echo "  make coverage      RTL line coverage of the directed round-trip [local; post-gate]"
@@ -110,21 +145,27 @@ help:
 
 # ---- RTL lint (the primary local gate) --------------------------------------
 lint:
-	$(VERILATOR) --lint-only -Wall -sv --top-module $(RTL_TOP) $(RTL_SRCS)
+	$(LOCAL_ENV) $(VERILATOR) --lint-only -Wall -sv --top-module $(RTL_TOP) $(RTL_SRCS)
 	@echo "[lint] RTL OK"
 
 # ---- PyUVM-on-cocotb tier (runs locally) ------------------------------------
 # Delegates to the cocotb Makefile. SIM/simulator selection lives there.
 pyuvm:
-	$(MAKE) -C dv/pyuvm
+	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm
 
 # ---- Functional coverage tier (cocotb_coverage; Icarus in CI) ---------------
 fcov:
-	$(MAKE) -C dv/pyuvm MODULE=test_fcov SIM=$(FCOV_SIM)
+	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_fcov SIM=$(FCOV_SIM)
 
 # ---- SV UVM env: lint only here (full build is CI/Railway) ------------------
 lint-uvm:
-	$(MAKE) -C dv/uvm/vlt lint
+	$(LOCAL_ENV) $(MAKE) -C dv/uvm/vlt lint $(LINT_UVM_ARGS)
+
+# ---- Force the canonical CI/remote toolchain (bypass the local autodetect) --
+# `make fcov-ci` etc. re-enter with LOCAL=0, so they run exactly as CI/Railway
+# do (apt verilator/iverilog, Icarus fcov) regardless of this box's oss-cad env.
+lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci:
+	$(MAKE) $(@:-ci=) LOCAL=0
 
 # ---- SV UVM env: full --binary build + run (CI/Railway only) ----------------
 uvm:
@@ -152,12 +193,12 @@ VERILATOR_COVERAGE ?= verilator_coverage
 
 coverage:
 	rm -f dv/pyuvm/coverage.dat dv/pyuvm/cov_build/coverage.dat
-	$(MAKE) -C dv/pyuvm RTL_COVERAGE=1 SIM=verilator
+	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm RTL_COVERAGE=1 SIM=verilator
 	mkdir -p $(COV_DIR)
 	@if   [ -f dv/pyuvm/coverage.dat ];           then mv -f dv/pyuvm/coverage.dat           $(COV_DIR)/coverage.dat; \
 	 elif [ -f dv/pyuvm/cov_build/coverage.dat ]; then mv -f dv/pyuvm/cov_build/coverage.dat $(COV_DIR)/coverage.dat; \
 	 else echo "[COV] ERROR: the instrumented run produced no coverage.dat"; exit 1; fi
-	-$(VERILATOR_COVERAGE) --annotate $(COV_DIR)/annotated --annotate-min 1 \
+	-$(LOCAL_ENV) $(VERILATOR_COVERAGE) --annotate $(COV_DIR)/annotated --annotate-min 1 \
 	  $(COV_DIR)/coverage.dat
 	$(PYTHON) tools/coverage_report.py $(COV_DIR)/coverage.dat \
 	  --rtl-dir $(RTL_DIR) --report $(COV_DIR)/coverage.txt \
