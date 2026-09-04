@@ -77,6 +77,10 @@ LEN      ?= 8
 SEED     ?= 0xC0FFEE
 RUN_PCLK ?= $(shell expr 160 + 40 \* $(LEN))
 VEC      := $(abspath dv/common/vectors/build/fdi_flits.vec)
+# Framed PIPE word stream (block-aligned, via the shared framing model) for the
+# B2B "external PCIe" config, whose SV UVM tier has no framer and must $readmemh a
+# pre-framed word vector; the PyUVM tier reads the identical file.
+VEC_WORDS := $(abspath dv/common/vectors/build/fdi_words.vec)
 GEN_VEC  := dv/common/vectors/gen_vectors.py
 ifeq ($(SEED),random)
   SEED_RESOLVED := $(shell $(PYTHON) -c "import random;print(hex(random.getrandbits(64)))")
@@ -84,8 +88,8 @@ else
   SEED_RESOLVED := $(SEED)
 endif
 
-.PHONY: default help lint pyuvm fcov b2b b2b-ucie b2b-pcie lint-uvm uvm \
-        trace-compare coverage formal \
+.PHONY: default help lint pyuvm fcov b2b b2b-ucie b2b-pcie lint-b2b-uvm uvm-b2b \
+        lint-uvm uvm trace-compare coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
@@ -190,7 +194,7 @@ lint:
 gen-vectors:
 	@mkdir -p $(dir $(VEC))
 	$(LOCAL_ENV) $(PYTHON) $(GEN_VEC) --profile $(PROFILE) --n $(LEN) \
-	  --seed $(SEED_RESOLVED) --out $(VEC)
+	  --seed $(SEED_RESOLVED) --out $(VEC) --words-out $(VEC_WORDS)
 	@echo "[VEC] profile=$(PROFILE) len=$(LEN) seed=$(SEED_RESOLVED) run_pclk=$(RUN_PCLK)"
 
 # ---- PyUVM-on-cocotb tier (runs locally) ------------------------------------
@@ -225,12 +229,26 @@ b2b-ucie: gen-vectors
 	  SIM_BUILD=$(abspath dv/pyuvm/b2b_ucie_build)
 
 b2b-pcie: gen-vectors
-	$(LOCAL_ENV) VEC="$(VEC)" RUN_PCLK="$(RUN_PCLK)" $(MAKE) -C dv/pyuvm \
+	$(LOCAL_ENV) VEC="$(VEC)" VEC_WORDS="$(VEC_WORDS)" RUN_PCLK="$(RUN_PCLK)" \
+	  $(MAKE) -C dv/pyuvm \
 	  MODULE=test_b2b_pcie TOPLEVEL=b2b_pcie_ucie_pcie \
 	  EXTRA_VERILOG=$(HARNESS)/b2b_pcie_ucie_pcie.sv \
 	  SIM_BUILD=$(abspath dv/pyuvm/b2b_pcie_build)
 
 b2b: b2b-ucie b2b-pcie
+
+# ---- B2B SV UVM tier: elaborate-only locally, full --binary run in CI ---------
+# Same split as the single-bridge UVM tier: `lint-b2b-uvm` elaborates both B2B
+# envs on the local host (RAM-safe); `uvm-b2b` does the full --binary build+run
+# in CI/Railway (OOMs a small box). Both read the SAME shared vectors as the
+# PyUVM B2B tier: +VEC (flits) for the UCIe config, +VEC_WORDS (the framed word
+# stream) for the PCIe config.
+lint-b2b-uvm:
+	$(LOCAL_ENV) $(MAKE) -C dv/uvm/vlt lint-b2b $(LINT_UVM_ARGS)
+
+uvm-b2b: gen-vectors
+	$(MAKE) -C dv/uvm/vlt run-b2b VEC="$(VEC)" VEC_WORDS="$(VEC_WORDS)" \
+	  N_FLITS="$(LEN)" RUN_PCLK="$(RUN_PCLK)"
 
 # ---- SV UVM env: lint only here (full build is CI/Railway) ------------------
 lint-uvm:

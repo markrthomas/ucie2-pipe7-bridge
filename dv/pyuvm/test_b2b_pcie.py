@@ -73,8 +73,16 @@ class B2bPcieTest(uvm_test):
             getattr(dut, n).value = 0
 
     async def _drive_rx(self, dut):
-        """Replay the block-aligned PIPE word stream into bridge A's PIPE RX."""
-        words = fm.frame_stream([(d, False) for d in self.payloads], PIPE_WIDTH)
+        """Replay the block-aligned PIPE word stream into bridge A's PIPE RX.
+
+        Prefer the shared framed-word vector (VEC_WORDS env) so the PyUVM and SV
+        UVM tiers inject the identical stream (single source of truth); fall back
+        to framing in-process via the same model when it is not provided."""
+        words_vec = os.environ.get("VEC_WORDS")
+        if words_vec:
+            words = gv.read_vec(words_vec)
+        else:
+            words = fm.frame_stream([(d, False) for d in self.payloads], PIPE_WIDTH)
         for _ in range(LINK_WARMUP_PCLK):
             await RisingEdge(dut.pclk)
         for w in words:

@@ -54,11 +54,12 @@ UVM_PLUSARGS ?= +UVM_NO_RELNOTES
 # Default-test stimulus, passed through from the root Makefile. When empty (e.g. a
 # bare `make -C dv/uvm/vlt run`, or the EDA Playground bundle) the SV sequence
 # falls back to its compiled-in directed ramp and the N_FLITS/RUN_PCLK localparams.
-VEC      ?=
-N_FLITS  ?=
-RUN_PCLK ?=
-STIM_PLUSARGS := $(if $(VEC),+VEC=$(VEC)) $(if $(N_FLITS),+N_FLITS=$(N_FLITS)) \
-                 $(if $(RUN_PCLK),+RUN_PCLK=$(RUN_PCLK))
+VEC       ?=
+VEC_WORDS ?=
+N_FLITS   ?=
+RUN_PCLK  ?=
+STIM_PLUSARGS := $(if $(VEC),+VEC=$(VEC)) $(if $(VEC_WORDS),+VEC_WORDS=$(VEC_WORDS)) \
+                 $(if $(N_FLITS),+N_FLITS=$(N_FLITS)) $(if $(RUN_PCLK),+RUN_PCLK=$(RUN_PCLK))
 
 .PHONY: lint run ci clean
 
@@ -86,6 +87,60 @@ run:
 	else echo "PASS: clean UVM report (0 errors, 0 fatals)"; fi
 
 ci: lint run
+
+# ---- Back-to-back (B2B) two-bridge configs (Phase H, SV UVM tier) -----------
+# Additive: each config has its OWN top / package / interface, so the sacred
+# single-bridge `lint`/`run` (and its byte-identical trace) are untouched. The
+# bound SVA checker (ucie2_pipe7_sva.sv) is deliberately NOT compiled here -- it
+# binds by module name to every ucie2_pipe7_bridge, so with two idle-ended
+# bridges its directed-round-trip properties could false-fire; the B2B tier is
+# scoreboard-gated instead. Stimulus flows via the same +VEC/+N_FLITS/+RUN_PCLK
+# plusargs as `run` (config-pcie adds +VEC via a pre-framed PIPE word vector).
+.PHONY: lint-b2b lint-b2b-ucie lint-b2b-pcie run-b2b run-b2b-ucie run-b2b-pcie
+
+HARNESS_DIR := $(abspath $(VLT_DIR)/../../harness)
+B2B         := $(abspath $(SV)/b2b)
+
+B2B_UCIE_SRCS := $(RTL_SRCS) $(B2B)/b2b_ucie_if.sv $(B2B)/b2b_ucie_uvm_pkg.sv \
+                 $(HARNESS_DIR)/b2b_ucie_pcie_ucie.sv $(B2B)/tb_b2b_ucie.sv
+B2B_PCIE_SRCS := $(RTL_SRCS) $(B2B)/b2b_pcie_if.sv $(B2B)/b2b_pcie_uvm_pkg.sv \
+                 $(HARNESS_DIR)/b2b_pcie_ucie_pcie.sv $(B2B)/tb_b2b_pcie.sv
+
+lint-b2b: lint-b2b-ucie lint-b2b-pcie
+run-b2b:  run-b2b-ucie run-b2b-pcie
+
+lint-b2b-ucie:
+	$(VERILATOR) $(LINTFLAGS) --top-module tb_b2b_ucie $(INCS) $(UVM_HDR) $(B2B_UCIE_SRCS)
+	@echo "[lint-uvm] B2B UCIe env elaborates OK"
+
+lint-b2b-pcie:
+	$(VERILATOR) $(LINTFLAGS) --top-module tb_b2b_pcie $(INCS) $(UVM_HDR) $(B2B_PCIE_SRCS)
+	@echo "[lint-uvm] B2B PCIe env elaborates OK"
+
+# The `run` pass/fail check without the [SVA] branch (no bound checker here).
+define B2B_RUN_CHECK
+	@echo "----- UVM report counts -----"
+	@grep -E "UVM_(INFO|WARNING|ERROR|FATAL) :" $(1)/run.log || true
+	@if grep -qE "UVM_(ERROR|FATAL) :[[:space:]]*[1-9]" $(1)/run.log; then \
+	  echo "FAIL: reported UVM_ERROR/UVM_FATAL"; exit 1; \
+	elif ! grep -qE "UVM_INFO :" $(1)/run.log; then \
+	  echo "FAIL: no UVM report (crash before report_phase?)"; exit 1; \
+	else echo "PASS: clean UVM report (0 errors, 0 fatals)"; fi
+endef
+
+run-b2b-ucie:
+	rm -rf $(OBJ)/b2b_ucie && mkdir -p $(OBJ)/b2b_ucie
+	$(VERILATOR) $(VFLAGS) --top-module tb_b2b_ucie --Mdir $(OBJ)/b2b_ucie $(INCS) \
+	  $(UVM_HDR) $(UVM_DPI) $(B2B_UCIE_SRCS)
+	$(OBJ)/b2b_ucie/Vtb_b2b_ucie $(UVM_PLUSARGS) $(STIM_PLUSARGS) 2>&1 | tee $(OBJ)/b2b_ucie/run.log
+	$(call B2B_RUN_CHECK,$(OBJ)/b2b_ucie)
+
+run-b2b-pcie:
+	rm -rf $(OBJ)/b2b_pcie && mkdir -p $(OBJ)/b2b_pcie
+	$(VERILATOR) $(VFLAGS) --top-module tb_b2b_pcie --Mdir $(OBJ)/b2b_pcie $(INCS) \
+	  $(UVM_HDR) $(UVM_DPI) $(B2B_PCIE_SRCS)
+	$(OBJ)/b2b_pcie/Vtb_b2b_pcie $(UVM_PLUSARGS) $(STIM_PLUSARGS) 2>&1 | tee $(OBJ)/b2b_pcie/run.log
+	$(call B2B_RUN_CHECK,$(OBJ)/b2b_pcie)
 
 clean:
 	rm -rf $(OBJ)

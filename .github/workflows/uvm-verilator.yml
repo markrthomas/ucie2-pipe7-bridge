@@ -84,6 +84,18 @@ jobs:
       - name: B2B two-bridge configs (PyUVM, make b2b)
         run: make b2b
 
+      # B2B SV UVM tier (--binary), the second independent implementation of the
+      # back-to-back configs. GATING. Uses the from-source Verilator + bundled UVM
+      # already set up above; two separate builds (ucie / pcie), each two bridges.
+      # No SVA bound here (see dv/uvm/vlt/Makefile). Reads the same shared vectors
+      # as make b2b (+VEC flits / +VEC_WORDS framed words).
+      - name: B2B SV UVM envs (--binary, make uvm-b2b)
+        run: |
+          make uvm-b2b \
+            VERILATOR="$VERILATOR_PREFIX/bin/verilator" \
+            UVM_HOME="$VERILATOR_PREFIX/uvm" \
+            BUILD_JOBS="$(nproc)"
+
       - name: Upload traces + UVM log
         if: always()
         uses: actions/upload-artifact@v4
@@ -93,6 +105,8 @@ jobs:
             dv/pyuvm/build/bridge.trace
             dv/uvm/vlt/obj/bridge.trace
             dv/uvm/vlt/obj/run.log
+            dv/uvm/vlt/obj/b2b_ucie/run.log
+            dv/uvm/vlt/obj/b2b_pcie/run.log
           retention-days: 7
           if-no-files-found: ignore
 

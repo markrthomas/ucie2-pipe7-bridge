@@ -36,6 +36,7 @@ flowchart LR
 | `rtl/` | SystemVerilog RTL (bridge top + package) |
 | `dv/pyuvm/` | PyUVM-on-cocotb tier (runs locally + CI) |
 | `dv/harness/` | back-to-back (B2B) wrapper tops: two bridges joined at PIPE / at FDI (`make b2b`) |
+| `dv/uvm/sv/b2b/` | SV UVM tier for the B2B configs (interfaces, drivers, monitors, scoreboards, tops) |
 | `dv/uvm/{sv,vlt,vcs}/` | SV UVM env (one class per file, Cookbook-style), Verilator `--binary` flow, VCS mirror |
 | `dv/uvm/sv/{fdi_agent,pipe_agent,env,test}/` | per-class UVM sources (agents, env, test) — see below |
 | `dv/uvm/sv/ucie2_pipe7_sva.sv` | bound SVA checker on the bridge boundary (see below) |
@@ -138,8 +139,23 @@ straight into a bridge's deframer.
 Each config uses its own `SIM_BUILD` (`dv/pyuvm/b2b_{ucie,pcie}_build/`), so it
 never collides with the single-bridge `sim_build` or the other config. The
 cross-check is a **PyUVM scoreboard** (round-trip identity + independent
-framing-model agreement + deframer health); a byte-identical PyUVM↔SV-UVM trace
-gate for these configs is deferred until the SV UVM B2B tier lands.
+framing-model agreement + deframer health).
+
+**SV UVM tier** (`dv/uvm/sv/b2b/`) — a second, independent implementation of both
+configs, Cookbook-style one-class-per-file, each with its own interface / driver /
+monitors / scoreboard / top. Same local/CI split as the single-bridge UVM tier:
+
+```bash
+make lint-b2b-uvm   # elaborate-only, both configs        [local, RAM-safe]
+make uvm-b2b        # full --binary build + run, both      [CI / Railway]
+```
+
+Both tiers read the **same shared vectors**: `+VEC` (flits) for the UCIe config,
+and a `+VEC_WORDS` framed PIPE word stream for the PCIe config — the SV side has no
+framer, so `make gen-vectors` emits that stream from the shared `framing_model`
+(single source of truth), and the PyUVM PCIe test reads the identical file. A
+byte-identical PyUVM↔SV-UVM per-cycle trace gate for these configs is deferred
+(PLAN Phase H3); the B2B tier is scoreboard-gated in both TBs for now.
 
 ## SV UVM env layout (Cookbook-style)
 
