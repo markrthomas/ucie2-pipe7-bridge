@@ -75,6 +75,15 @@ jobs:
       - name: Cycle-accurate cross-check (PyUVM trace == UVM trace)
         run: make trace-compare
 
+      # Back-to-back two-bridge configs (PyUVM). Uses the same from-source
+      # Verilator + cocotb/pyuvm already on PATH. GATING (must pass). Placed
+      # AFTER trace-compare so it is unambiguously incapable of perturbing the
+      # sacred single-bridge cross-check: each config builds into its own
+      # SIM_BUILD (dv/pyuvm/b2b_{ucie,pcie}_build) and writes no bridge.trace,
+      # and the shared vector it regenerates is byte-identical (fixed seed).
+      - name: B2B two-bridge configs (PyUVM, make b2b)
+        run: make b2b
+
       - name: Upload traces + UVM log
         if: always()
         uses: actions/upload-artifact@v4
