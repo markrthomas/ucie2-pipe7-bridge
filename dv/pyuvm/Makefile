@@ -15,7 +15,14 @@ RTL := $(abspath ../../rtl)
 # Package first, then every other rtl source (FDI front-end + datapath + top).
 VERILOG_SOURCES := $(RTL)/ucie2_pipe7_pkg.sv \
                    $(filter-out $(RTL)/ucie2_pipe7_pkg.sv,$(wildcard $(RTL)/*.sv))
-TOPLEVEL := ucie2_pipe7_bridge
+# Extra sources appended after the rtl/ set (e.g. the dv/harness B2B wrapper tops
+# for the back-to-back configs). Empty for the single-bridge default. The root
+# Makefile's b2b-* targets set both this and TOPLEVEL below.
+EXTRA_VERILOG ?=
+VERILOG_SOURCES += $(EXTRA_VERILOG)
+# TOPLEVEL is overridable so the B2B wrappers can be elaborated as the top; the
+# default is the single bridge.
+TOPLEVEL ?= ucie2_pipe7_bridge
 # Default test: the directed Gen5 FDI round-trip (proves data flows + emits the
 # cycle-accurate trace). test_smoke.py remains for a quick idle bring-up check.
 MODULE   ?= test_roundtrip
@@ -83,5 +90,5 @@ endif
 include $(shell cocotb-config --makefiles)/Makefile.sim
 
 clean::
-	rm -rf sim_build cov_build wave_build build results.xml coverage.dat \
-	       dump.vcd dump.fst __pycache__
+	rm -rf sim_build cov_build wave_build b2b_ucie_build b2b_pcie_build \
+	       build results.xml coverage.dat dump.vcd dump.fst __pycache__

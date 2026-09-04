@@ -366,6 +366,51 @@ predecessor (only the FDI front-end + top are new).
   tests, overflow/accumulator guards, deeper/unbounded formal (k-induction on the
   gearbox).** Enumerate once Phase E is green.
 
+### Phase H — back-to-back (B2B) two-bridge integration
+
+Two `ucie2_pipe7_bridge` instances wired together so a payload traverses a full
+protocol hop through a real seam instead of the single-bridge PHY self-loopback.
+A thin wrapper top in `dv/harness/` performs the join (cocotb requires one
+TOPLEVEL); the wrappers are **harness only — not in `rtl/`**, so `make lint` and
+the single-bridge source lists are untouched, and the SAME wrappers are reused by
+both DV tiers. Both tiers read the shared stimulus vectors, so `LEN`/`SEED`/
+`PROFILE` apply unchanged: `+VEC` (flits) for the UCIe config; a `+VEC_WORDS`
+framed PIPE word stream (emitted by `gen_vectors.py --words-out` from the shared
+`framing_model`) for the PCIe config, since the SV side has no framer. Each tier
+is scoreboard-gated; a **byte-identical PyUVM↔SV-UVM per-cycle trace gate** for
+these configs is deferred (H3).
+
+- [x] **H1. B2B config — join at PCIe (external UCIe).**
+  `dv/harness/b2b_ucie_pcie_ucie.sv` + `dv/pyuvm/test_b2b_ucie.py`, `make b2b-ucie`:
+  UCIe → [bridge A] → PCIe ══ PCIe → [bridge B] → UCIe. An FDI flit driven into A
+  is framed, crosses a real PIPE link (A.tx_data → B.rx_data), and is recovered by
+  B as an FDI flit. Bridge A's FDI link is TB-controlled (proven driver bring-up);
+  bridge B's is brought to ACTIVE internally. Scoreboard: recovered==driven +
+  middle PIPE stream == independent framer + B reaches lock, no sync_error.
+  Unidirectional (A→B). Verified LEN=8/32/64, `PROFILE=ramp`.
+- [x] **H2. B2B config — join at FDI (external PCIe), the RX-inject path (§2).**
+  `dv/harness/b2b_pcie_ucie_pcie.sv` + `dv/pyuvm/test_b2b_pcie.py`, `make b2b-pcie`:
+  PCIe → [bridge A] → UCIe ══ UCIe → [bridge B] → PCIe. A legal, block-aligned
+  PIPE word stream (the Python framer's own output) is injected into A.rx_data,
+  deframed across the FDI seam (A.pl_data → B.lp_data), and re-framed by B onto
+  B.tx_data. Both bridges' FDI links self-bring-up to ACTIVE. Scoreboard: flits
+  recovered at the UCIe seam == driven + an independent deframe of B's own PCIe
+  output == driven (true PCIe→PCIe) + legal sync headers + A locks, no sync_error.
+  This closes the "overflow/rx-inject wrapper" flagged in §2 for the read path.
+  Unidirectional (A→B). Verified LEN=8/32/64, `PROFILE=ramp`.
+- [x] **H1b / H2b. SV UVM tier for both B2B configs** — `dv/uvm/sv/b2b/`
+  (Cookbook one-class-per-file: interface, driver, monitors, scoreboard, test,
+  package, top per config), a second independent implementation reusing the same
+  `dv/harness/` wrappers. `make lint-b2b-uvm` elaborates both locally (RAM-safe);
+  `make uvm-b2b` does the full `--binary` build+run in CI/Railway (gated in
+  `uvm-verilator.yml`). No bound SVA here (it binds by module name to every bridge
+  and could false-fire on the idle-ended instances). The UCIe config reuses the
+  generic FDI stimulus classes ($readmemh `+VEC`); the PCIe config's driver
+  replays the shared `+VEC_WORDS` framed stream. Scoreboard-gated.
+- [ ] **H3. Return path (B→A) / bidirectional B2B**, credit-based FDI-seam flow
+  control for long bursts, and a **byte-identical PyUVM↔SV-UVM per-cycle trace
+  cross-check** for the B2B configs. Deferred.
+
 ## 8. Per-commit green gate
 
 Every commit keeps these green (the ones that run in this environment):

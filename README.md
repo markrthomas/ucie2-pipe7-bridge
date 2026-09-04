@@ -35,6 +35,8 @@ flowchart LR
 |------|------|
 | `rtl/` | SystemVerilog RTL (bridge top + package) |
 | `dv/pyuvm/` | PyUVM-on-cocotb tier (runs locally + CI) |
+| `dv/harness/` | back-to-back (B2B) wrapper tops: two bridges joined at PIPE / at FDI (`make b2b`) |
+| `dv/uvm/sv/b2b/` | SV UVM tier for the B2B configs (interfaces, drivers, monitors, scoreboards, tops) |
 | `dv/uvm/{sv,vlt,vcs}/` | SV UVM env (one class per file, Cookbook-style), Verilator `--binary` flow, VCS mirror |
 | `dv/uvm/sv/{fdi_agent,pipe_agent,env,test}/` | per-class UVM sources (agents, env, test) — see below |
 | `dv/uvm/sv/ucie2_pipe7_sva.sv` | bound SVA checker on the bridge boundary (see below) |
@@ -69,6 +71,9 @@ make pyuvm SEED=random       # a fresh sequence each run (prints the seed)
 make pyuvm PROFILE=ramp      # the directed 0x1000+i / 0xABCD0000+i ramp (regression)
 # The FDI driver honors pl_trdy backpressure, so any length round-trips without
 # dropping flits; RUN_PCLK (trace/drain cycles) auto-scales with LEN.
+
+make b2b        # back-to-back two-bridge configs (PyUVM) — see "Back-to-back" below
+make b2b LEN=64 # same LEN/SEED/PROFILE knobs as the single-bridge round-trip
 
 # SV UVM env: LINT ONLY locally (the full --binary build OOMs a small box).
 # Needs a UVM-capable Verilator >= 5.050 + its bundled UVM lib (NOT OSS CAD Suite):
@@ -106,6 +111,51 @@ make metrics        # [METRICS] regressions: N (advisory) + row #N appended
 make dashboard      # [DASH] wrote metrics/dashboard.html (trends, filter/sort,
                     #        per-tier drill-down, git_sha → commit links)
 ```
+
+## Back-to-back (B2B) two-bridge configs
+
+Beyond the single-bridge round-trip, two `ucie2_pipe7_bridge` instances can be
+wired **back-to-back** so a payload traverses a *complete* protocol hop through a
+real seam instead of the PHY self-loopback. A thin wrapper top in `dv/harness/`
+does the join (cocotb needs one TOPLEVEL); the PyUVM tests reuse the shared
+stimulus vector, so `LEN` / `SEED` / `PROFILE` apply exactly as for `make pyuvm`.
+
+```bash
+make b2b-ucie   # UCIe → [bridge A] → PCIe ══ PCIe → [bridge B] → UCIe
+make b2b-pcie   # PCIe → [bridge A] → UCIe ══ UCIe → [bridge B] → PCIe
+make b2b        # both
+```
+
+| Config | Wrapper | Join (middle) | External ends | Stimulus / observation |
+|--------|---------|---------------|---------------|------------------------|
+| `b2b-ucie` | `b2b_ucie_pcie_ucie.sv` | **PCIe** link (A.tx_data → B.rx_data) | UCIe/FDI | drive FDI flits into A; recover FDI flits out of B |
+| `b2b-pcie` | `b2b_pcie_ucie_pcie.sv` | **UCIe** FDI seam (A.pl_data → B.lp_data) | PCIe/PIPE | inject a framed PIPE word stream into A.rx_data; recover the re-framed stream out of B.tx_data |
+
+Both are **unidirectional (A→B)** to start; the return path is future work. The
+`b2b-pcie` config exercises the RX-inject path flagged in `PLAN.md` §2 — a legal,
+block-aligned PIPE word stream (the independent Python framer's output) is played
+straight into a bridge's deframer.
+
+Each config uses its own `SIM_BUILD` (`dv/pyuvm/b2b_{ucie,pcie}_build/`), so it
+never collides with the single-bridge `sim_build` or the other config. The
+cross-check is a **PyUVM scoreboard** (round-trip identity + independent
+framing-model agreement + deframer health).
+
+**SV UVM tier** (`dv/uvm/sv/b2b/`) — a second, independent implementation of both
+configs, Cookbook-style one-class-per-file, each with its own interface / driver /
+monitors / scoreboard / top. Same local/CI split as the single-bridge UVM tier:
+
+```bash
+make lint-b2b-uvm   # elaborate-only, both configs        [local, RAM-safe]
+make uvm-b2b        # full --binary build + run, both      [CI / Railway]
+```
+
+Both tiers read the **same shared vectors**: `+VEC` (flits) for the UCIe config,
+and a `+VEC_WORDS` framed PIPE word stream for the PCIe config — the SV side has no
+framer, so `make gen-vectors` emits that stream from the shared `framing_model`
+(single source of truth), and the PyUVM PCIe test reads the identical file. A
+byte-identical PyUVM↔SV-UVM per-cycle trace gate for these configs is deferred
+(PLAN Phase H3); the B2B tier is scoreboard-gated in both TBs for now.
 
 ## SV UVM env layout (Cookbook-style)
 

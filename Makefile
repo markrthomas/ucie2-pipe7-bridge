@@ -77,6 +77,10 @@ LEN      ?= 8
 SEED     ?= 0xC0FFEE
 RUN_PCLK ?= $(shell expr 160 + 40 \* $(LEN))
 VEC      := $(abspath dv/common/vectors/build/fdi_flits.vec)
+# Framed PIPE word stream (block-aligned, via the shared framing model) for the
+# B2B "external PCIe" config, whose SV UVM tier has no framer and must $readmemh a
+# pre-framed word vector; the PyUVM tier reads the identical file.
+VEC_WORDS := $(abspath dv/common/vectors/build/fdi_words.vec)
 GEN_VEC  := dv/common/vectors/gen_vectors.py
 ifeq ($(SEED),random)
   SEED_RESOLVED := $(shell $(PYTHON) -c "import random;print(hex(random.getrandbits(64)))")
@@ -84,7 +88,8 @@ else
   SEED_RESOLVED := $(SEED)
 endif
 
-.PHONY: default help lint pyuvm fcov lint-uvm uvm trace-compare coverage formal \
+.PHONY: default help lint pyuvm fcov b2b b2b-ucie b2b-pcie lint-b2b-uvm uvm-b2b \
+        lint-uvm uvm trace-compare coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
@@ -103,6 +108,10 @@ help:
 	@echo "  make gen-vectors   (re)generate the shared stimulus vector        [local]"
 	@echo "                     (dv/common/vectors/build/fdi_flits.vec via gen_vectors.py)"
 	@echo "  make fcov          functional coverage (cocotb_coverage)        [local]"
+	@echo "  make b2b           back-to-back two-bridge configs (PyUVM)       [local]"
+	@echo "                     (b2b-ucie: UCIe==PCIe link==UCIe; b2b-pcie: PCIe==UCIe"
+	@echo "                      link==PCIe. Two ucie2_pipe7_bridge joined by a"
+	@echo "                      dv/harness wrapper; shares LEN/SEED/PROFILE knobs.)"
 	@echo "  make lint-uvm      elaborate-only lint of the SV UVM env       [local]"
 	@echo "  (lint/pyuvm/fcov/lint-uvm/coverage auto-detect this oss-cad box and run"
 	@echo "   a clean local env; append -ci — e.g. 'make fcov-ci' — or LOCAL=0 to force"
@@ -185,7 +194,7 @@ lint:
 gen-vectors:
 	@mkdir -p $(dir $(VEC))
 	$(LOCAL_ENV) $(PYTHON) $(GEN_VEC) --profile $(PROFILE) --n $(LEN) \
-	  --seed $(SEED_RESOLVED) --out $(VEC)
+	  --seed $(SEED_RESOLVED) --out $(VEC) --words-out $(VEC_WORDS)
 	@echo "[VEC] profile=$(PROFILE) len=$(LEN) seed=$(SEED_RESOLVED) run_pclk=$(RUN_PCLK)"
 
 # ---- PyUVM-on-cocotb tier (runs locally) ------------------------------------
@@ -198,6 +207,48 @@ pyuvm: gen-vectors
 # Directed-ramp coverage: independent of the random default (its own committed vec).
 fcov:
 	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_fcov SIM=$(FCOV_SIM)
+
+# ---- Back-to-back (B2B) two-bridge configs (PyUVM tier) ---------------------
+# Two ucie2_pipe7_bridge instances wired together by a dv/harness wrapper top,
+# driven through the shared stimulus vector (LEN/SEED/PROFILE apply). Cocotb needs
+# ONE TOPLEVEL, so each config elaborates its wrapper as the top and appends the
+# wrapper source via EXTRA_VERILOG. UNIDIRECTIONAL (A->B) to start.
+#   make b2b-ucie   UCIe -> PCIe == PCIe -> UCIe (join at PCIe; external UCIe)
+#   make b2b-pcie   PCIe -> UCIe == UCIe -> PCIe (join at UCIe; external PCIe)
+#   make b2b        both
+# The heavy --binary SV UVM tier for these configs is future work (see PLAN).
+HARNESS := $(abspath dv/harness)
+
+# Each config elaborates a different TOPLEVEL; cocotb only rebuilds when the
+# source list changes, so a distinct SIM_BUILD per config (and separate from the
+# single-bridge sim_build) is required to avoid reusing the wrong compiled top.
+b2b-ucie: gen-vectors
+	$(LOCAL_ENV) VEC="$(VEC)" RUN_PCLK="$(RUN_PCLK)" $(MAKE) -C dv/pyuvm \
+	  MODULE=test_b2b_ucie TOPLEVEL=b2b_ucie_pcie_ucie \
+	  EXTRA_VERILOG=$(HARNESS)/b2b_ucie_pcie_ucie.sv \
+	  SIM_BUILD=$(abspath dv/pyuvm/b2b_ucie_build)
+
+b2b-pcie: gen-vectors
+	$(LOCAL_ENV) VEC="$(VEC)" VEC_WORDS="$(VEC_WORDS)" RUN_PCLK="$(RUN_PCLK)" \
+	  $(MAKE) -C dv/pyuvm \
+	  MODULE=test_b2b_pcie TOPLEVEL=b2b_pcie_ucie_pcie \
+	  EXTRA_VERILOG=$(HARNESS)/b2b_pcie_ucie_pcie.sv \
+	  SIM_BUILD=$(abspath dv/pyuvm/b2b_pcie_build)
+
+b2b: b2b-ucie b2b-pcie
+
+# ---- B2B SV UVM tier: elaborate-only locally, full --binary run in CI ---------
+# Same split as the single-bridge UVM tier: `lint-b2b-uvm` elaborates both B2B
+# envs on the local host (RAM-safe); `uvm-b2b` does the full --binary build+run
+# in CI/Railway (OOMs a small box). Both read the SAME shared vectors as the
+# PyUVM B2B tier: +VEC (flits) for the UCIe config, +VEC_WORDS (the framed word
+# stream) for the PCIe config.
+lint-b2b-uvm:
+	$(LOCAL_ENV) $(MAKE) -C dv/uvm/vlt lint-b2b $(LINT_UVM_ARGS)
+
+uvm-b2b: gen-vectors
+	$(MAKE) -C dv/uvm/vlt run-b2b VEC="$(VEC)" VEC_WORDS="$(VEC_WORDS)" \
+	  N_FLITS="$(LEN)" RUN_PCLK="$(RUN_PCLK)"
 
 # ---- SV UVM env: lint only here (full build is CI/Railway) ------------------
 lint-uvm:
