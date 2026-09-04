@@ -3,7 +3,8 @@
 //
 // Mirrors the PyUVM BridgeScoreboard: recovered FDI flits (rx_mon) must equal the
 // driven flits (driver.drv_ap), the deframer must reach block_locked with no
-// sync_error, and at least N_FLITS must be recovered. TX word count is tracked
+// sync_error, and at least as many flits as were driven must be recovered (the
+// driven count, so the check tracks any run length). TX word count is tracked
 // for the report. These are exactly the proven directed test's self-checks.
 // The `uvm_analysis_imp_decl macros must precede the class (they define the
 // _exp/_rx/_tx analysis-imp specializations it uses).
@@ -39,11 +40,11 @@ class bridge_scoreboard extends uvm_scoreboard;
       `uvm_error("SB", "deframer raised sync_error")
     if (vif.block_locked !== 1'b1)
       `uvm_error("SB", "deframer never reached block_locked")
-    if (rx_q.size() < N_FLITS)
-      `uvm_error("SB", $sformatf("only %0d flits recovered (< %0d)",
-                                 rx_q.size(), N_FLITS))
+    if (rx_q.size() < exp_q.size())
+      `uvm_error("SB", $sformatf("only %0d flits recovered (< %0d driven)",
+                                 rx_q.size(), exp_q.size()))
     else
-      for (int i = 0; i < N_FLITS; i++)
+      for (int i = 0; i < exp_q.size(); i++)
         if (rx_q[i] !== exp_q[i])
           `uvm_error("SB", $sformatf("round-trip mismatch [%0d]: got %h exp %h",
                                      i, rx_q[i], exp_q[i]))

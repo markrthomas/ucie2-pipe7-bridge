@@ -29,9 +29,14 @@ from seq_lib.fdi_seq_lib import FdiFlitSeq
 from agents.fdi_agent import _i
 
 PIPE_WIDTH = 80
-RUN_PCLK   = 200        # cycles to trace / drain (from reset deassert)
-VEC_FILE   = os.path.join(os.path.dirname(__file__),
-                          "..", "common", "vectors", "fdi_flits_ramp8.vec")
+# Run length + stimulus vector are set by the Make flow so both testbenches match:
+#   RUN_PCLK env -> cycles to trace/drain (default 200, scales with flit count).
+#   VEC env      -> shared .vec path (the seeded-random or ramp file); when unset,
+#                   falls back to the committed directed ramp so a bare
+#                   `make -C dv/pyuvm` still runs.
+RUN_PCLK   = int(os.environ.get("RUN_PCLK", "200"))
+VEC_FILE   = os.environ.get("VEC") or os.path.join(
+    os.path.dirname(__file__), "..", "common", "vectors", "fdi_flits_ramp8.vec")
 
 
 @pyuvm.test()

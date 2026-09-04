@@ -70,8 +70,15 @@ class FdiDriver(uvm_driver):
             dut.lp_data.value  = flit.data
             dut.lp_valid.value = 1
             dut.lp_irdy.value  = 1
+            # FDI flow control: a flit transfers only when lp_valid & lp_irdy &
+            # pl_trdy (blk_ready & link_active). Hold it until pl_trdy is high so a
+            # burst longer than the internal FIFO never drops flits. For short
+            # bursts pl_trdy is always high, so the schedule is unchanged.
+            while True:
+                await RisingEdge(dut.lclk)
+                if _i(dut.pl_trdy):
+                    break
             self.ap.write((flit.data, bool(flit.is_os)))
-            await RisingEdge(dut.lclk)
             self.seq_item_port.item_done()
 
         dut.lp_valid.value = 0

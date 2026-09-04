@@ -58,7 +58,17 @@ flowchart LR
 
 ```bash
 make lint       # RTL strict lint (Verilator -Wall)
-make pyuvm      # PyUVM-on-cocotb tier (needs a cocotb simulator on PATH)
+make pyuvm      # PyUVM-on-cocotb tier (default round-trip; needs a cocotb simulator)
+
+# The default round-trip test drives a SEEDED-RANDOM flit sequence of adjustable
+# length. Both testbenches read ONE generated vector (dv/common/vectors/build/), so
+# the cycle-accurate cross-check stays byte-identical. Knobs:
+make pyuvm LEN=64              # 64 random flits (default 8)
+make pyuvm SEED=42            # a different fixed sequence (default seed 0xC0FFEE)
+make pyuvm SEED=random       # a fresh sequence each run (prints the seed)
+make pyuvm PROFILE=ramp      # the directed 0x1000+i / 0xABCD0000+i ramp (regression)
+# The FDI driver honors pl_trdy backpressure, so any length round-trips without
+# dropping flits; RUN_PCLK (trace/drain cycles) auto-scales with LEN.
 
 # SV UVM env: LINT ONLY locally (the full --binary build OOMs a small box).
 # Needs a UVM-capable Verilator >= 5.050 + its bundled UVM lib (NOT OSS CAD Suite):
