@@ -407,9 +407,15 @@ these configs is deferred (H3).
   and could false-fire on the idle-ended instances). The UCIe config reuses the
   generic FDI stimulus classes ($readmemh `+VEC`); the PCIe config's driver
   replays the shared `+VEC_WORDS` framed stream. Scoreboard-gated.
-- [ ] **H3. Return path (B→A) / bidirectional B2B**, credit-based FDI-seam flow
-  control for long bursts, and a **byte-identical PyUVM↔SV-UVM per-cycle trace
-  cross-check** for the B2B configs. Deferred.
+- [x] **H3a. Full-duplex (bidirectional) B2B, PyUVM tier** — new full-duplex
+  wrapper tops (`dv/harness/b2b_*_fd.sv`, kept separate so the unidirectional
+  wrappers + SV UVM tbs are untouched) + tests (`dv/pyuvm/test_b2b_*_fd.py`),
+  `make b2b-ucie-fd` / `b2b-pcie-fd` (folded into `make b2b`). Both directions
+  drive the shared vector at once and both recovered streams must match, both
+  bridges locked, no sync_error. Verified LEN=8/32.
+- [ ] **H3b. Remaining:** full-duplex in the SV UVM tier, credit-based FDI-seam
+  flow control for long bursts, and a **byte-identical PyUVM↔SV-UVM per-cycle
+  trace cross-check** for the B2B configs. Deferred.
 
 ## 8. Per-commit green gate
 
