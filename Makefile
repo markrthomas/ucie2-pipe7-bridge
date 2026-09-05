@@ -472,8 +472,13 @@ WAVE_LAYOUT := $(if $(wildcard $(WAVE_LAYOUT_DIR)/$(TEST).gtkw),\
 # (PROFILE/LEN/SEED apply, RUN_PCLK auto-scales) by generating + feeding the shared
 # vector; without it the roundtrip test falls back to the committed directed ramp.
 # smoke/fcov carry their own stimulus, so they need neither the vec nor RUN_PCLK.
-# LOCAL_ENV mirrors `make pyuvm` so the local oss-cad box uses the working toolchain
-# (inert in CI). Set PROFILE=ramp for the directed ramp, or TEST=smoke/fcov.
+# Set PROFILE=ramp for the directed ramp, or TEST=smoke/fcov.
+#
+# NOTE: waves deliberately does NOT wrap the sim build in LOCAL_ENV (unlike
+# pyuvm/lint). LOCAL_ENV forces the from-source ~/verilator, whose FST writer
+# `#include <lz4.h>` needs system liblz4-dev; the oss-cad Verilator on PATH has a
+# self-contained FST writer, so the on-PATH toolchain is what dumps waveforms here.
+# (gen-vectors, the prereq, still runs under LOCAL_ENV via its own recipe.)
 ifeq ($(TEST),roundtrip)
   WAVE_DEPS := gen-vectors
   WAVE_STIM := VEC="$(VEC)" RUN_PCLK="$(RUN_PCLK)"
@@ -484,7 +489,7 @@ endif
 
 waves: $(WAVE_DEPS)
 	@mkdir -p $(WAVE_DIR)
-	$(LOCAL_ENV) $(WAVE_STIM) $(MAKE) -C dv/pyuvm WAVES=1 SIM=verilator MODULE=$(WAVE_MODULE) \
+	$(WAVE_STIM) $(MAKE) -C dv/pyuvm WAVES=1 SIM=verilator MODULE=$(WAVE_MODULE) \
 	  WAVE_DIR=$(abspath $(WAVE_DIR))
 	@if [ ! -s $(WAVE_FST) ]; then \
 	  echo "[WAVES] ERROR: the WAVES=1 run produced no FST at $(WAVE_FST)"; exit 1; fi
