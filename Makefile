@@ -88,7 +88,7 @@ else
   SEED_RESOLVED := $(SEED)
 endif
 
-.PHONY: default help lint pyuvm fcov b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
+.PHONY: default help tools tools-check lint pyuvm fcov b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
         lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
@@ -99,6 +99,12 @@ default: help
 
 help:
 	@echo "ucie2-pipe7-bridge targets:"
+	@echo "  make tools         check the toolchain, install what is MISSING  [local]"
+	@echo "                     (core apt+pip for lint/pyuvm/fcov, formal yosys/z3/sby,"
+	@echo "                      waves gtkwave; from-source UVM Verilator is opt-in via"
+	@echo "                      TOOLS_HEAVY=1. NOT OSS CAD Suite. tools/check_tools.sh)"
+	@echo "  make tools-check   report the toolchain only, install nothing    [local/CI]"
+	@echo "                     (exit non-zero if a CORE tool is missing; optional gaps OK)"
 	@echo "  make lint          RTL strict lint (Verilator -Wall)          [local]"
 	@echo "  make pyuvm         PyUVM-on-cocotb tier (default round-trip)    [local]"
 	@echo "                     (SEEDED-RANDOM stimulus, adjustable length:"
@@ -181,6 +187,21 @@ help:
 	@echo "  make railway-swarm-agents  Railway ca --claude swarm (alt path) [dry-run; SWARM_APPLY=1]"
 	@echo "                             (heavy --binary + trace_compare stay in CI)"
 	@echo "  make clean         remove build artifacts"
+
+# ---- Toolchain check / install ----------------------------------------------
+# `tools` verifies every tier's tools and installs the MISSING ones (apt + pip,
+# mirroring the Dockerfiles/CI — NOT OSS CAD Suite). The from-source UVM-capable
+# Verilator (needed only for the CI/Railway `make uvm` --binary gate) is a slow,
+# large build, so it is OPT-IN: `make tools TOOLS_HEAVY=1`. `tools-check` is the
+# read-only form (installs nothing; non-zero exit if a CORE tool is missing) for
+# CI or a quick audit. Logic lives in tools/check_tools.sh.
+TOOLS_HEAVY ?=
+
+tools:
+	bash tools/check_tools.sh $(if $(TOOLS_HEAVY),--heavy)
+
+tools-check:
+	bash tools/check_tools.sh --check
 
 # ---- RTL lint (the primary local gate) --------------------------------------
 lint:
