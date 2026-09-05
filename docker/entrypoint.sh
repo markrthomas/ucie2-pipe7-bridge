@@ -7,7 +7,15 @@
 #
 #   (no args)        -> make -C dv/uvm/vlt ci   <overrides>   (full UVM gate)
 #   make <targets>   -> make -C dv/uvm/vlt <targets> <overrides>
+#   shell            -> interactive shell now (local `docker run -it ... shell`),
+#                       or, with no TTY, hold the container open for `railway ssh`
 #   <anything else>  -> exec verbatim (verilator --version, bash, ...)
+#
+# Debug / attach env switches (for opening a terminal into a RUNNING container —
+# see docker/shell.sh):
+#   DEBUG_SHELL=1  -> skip the gate; open a shell (TTY) or hold open (no TTY)
+#   KEEP_ALIVE=1   -> run the gate as usual, THEN hold the container open so
+#                     `railway ssh` / `docker exec` can attach to inspect artifacts
 set -euo pipefail
 
 # A stale VERILATOR_ROOT hard-errors the launcher; the flow doesn't need it.
@@ -49,14 +57,46 @@ preflight_resources() {
   fi
 }
 
-# No args -> full CI gate. `make ...` -> forward to the vlt flow. Else exec.
-if [ "$#" -eq 0 ]; then
-  preflight_resources
-  exec make -C dv/uvm/vlt ci "${MAKE_ARGS[@]}"
-elif [ "$1" = "make" ]; then
-  shift
-  case " $* " in *" run "*|*" ci "*|*" all "*) preflight_resources ;; esac
-  exec make -C dv/uvm/vlt "$@" "${MAKE_ARGS[@]}"
-else
-  exec "$@"
+# Open (TTY) or hold open (no TTY) an interactive shell so a terminal can attach.
+# TTY  -> `docker run -it ... shell` drops you straight into bash.
+# No TTY (Railway/CI) -> sleep so `railway ssh`/`docker exec` can connect later.
+open_shell() {
+  echo "[entrypoint] debug shell. toolchain: ${MAKE_ARGS[0]}  ${MAKE_ARGS[1]}"
+  if [ -t 0 ]; then
+    exec bash -l
+  else
+    echo "[entrypoint] no TTY -> holding the container open. Attach with:"
+    echo "[entrypoint]   railway ssh      (Railway)   |   docker exec -it <c> bash   (Docker)"
+    echo "[entrypoint]   then: cd /work && make -C dv/uvm/vlt lint ${MAKE_ARGS[*]}"
+    exec sleep infinity
+  fi
+}
+
+# Run the gate WITHOUT exec (so KEEP_ALIVE can hold the container open afterward).
+run_gate() {
+  if [ "$#" -eq 0 ]; then
+    preflight_resources
+    make -C dv/uvm/vlt ci "${MAKE_ARGS[@]}"
+  elif [ "$1" = "make" ]; then
+    shift
+    case " $* " in *" run "*|*" ci "*|*" all "*) preflight_resources ;; esac
+    make -C dv/uvm/vlt "$@" "${MAKE_ARGS[@]}"
+  else
+    exec "$@"   # verbatim (verilator --version, bash, ...); replaces this process
+  fi
+}
+
+# DEBUG_SHELL / `shell` arg -> skip the gate entirely and open/hold a shell.
+if [ "${DEBUG_SHELL:-}" = "1" ] || [ "${1:-}" = "shell" ]; then
+  open_shell
 fi
+
+# KEEP_ALIVE -> run the gate, then hold open for attach (inspect artifacts, re-run).
+if [ "${KEEP_ALIVE:-}" = "1" ]; then
+  set +e; run_gate "$@"; rc=$?; set -e
+  echo "[entrypoint] gate finished (rc=${rc}); KEEP_ALIVE=1 -> holding open. Attach with:"
+  echo "[entrypoint]   railway ssh   |   docker exec -it <c> bash"
+  exec sleep infinity
+fi
+
+run_gate "$@"

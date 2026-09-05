@@ -236,6 +236,36 @@ once the baseline is agreed — deliberately *not* enabled in this change.
 > Work around it with `make pyuvm PYTHON3="$(command -v python3)"` (same for
 > `make coverage`).
 
+## Packet tracking (opt-in debug logging)
+
+`PKT_TRACK=1` turns on **packet tracking** — extra `[PKT]` log lines that follow
+each flit end-to-end through the bridge, in **both** testbenches:
+
+```bash
+make pyuvm PKT_TRACK=1            # PyUVM tier   (reads PKT_TRACK from the env)
+make pyuvm PKT_TRACK=1 LEN=32     # combines with the LEN/SEED/PROFILE knobs
+make uvm   PKT_TRACK=1            # SV UVM tier  (adds the +PKT_TRACK plusarg)  [CI/Railway]
+```
+
+Each flit is logged at every observation point, with a simulation timestamp so you
+can correlate a payload across the hops:
+
+```
+[PKT] DRIVE   fdi flit #0    data=0x2c61…6615 is_os=0  @28.0ns   <- FDI TX (ingress)
+[PKT] TXWORD  pipe word #0   data=0xb3e2…9856          @42.0ns   <- PIPE framer output
+[PKT] LOCK    deframer reached block_locked            @48.0ns
+[PKT] RECOVER fdi flit #0    data=0x2c61…6615          @56.0ns   <- FDI RX (egress)
+…
+[PKT] summary: driven=8 recovered=8 tx_words=13 sync_errors=0 block_locked=1
+```
+
+`DRIVE`/`RECOVER` carry the 128-bit FDI payload and its index; `TXWORD` the raw PIPE
+word; `LOCK`/`SYNCERR` the deframer transitions. Because every line is a log call at
+**zero simulation time** (no extra edge waits), packet tracking never shifts the
+fixed cycle schedule: the byte-identical per-cycle trace (`build/bridge.trace`) and
+the green gate are **unchanged** with it on, and there are **zero** `[PKT]` lines
+when it is off (verified). It is a pure observability switch — off by default.
+
 ## Waveform debugging (off-gate)
 
 ```bash
@@ -575,3 +605,35 @@ the image and caches warm.
 
 `.railway/railway.ts` runs the SV UVM gate as a batch job (no listening port).
 See `.railway/README.md`.
+
+## Shelling into a running container
+
+`make shell` opens an interactive terminal into a **running** container, wherever it
+lives — a local Docker/podman container, the GitHub Codespace/devcontainer, or a
+Railway deployment. It auto-detects the context (railway → docker → the current
+environment); override it explicitly:
+
+```bash
+make shell                              # auto-detect
+make shell SHELL_ARGS="docker <name>"   # docker exec -it into a running container
+make shell SHELL_ARGS="railway <svc>"   # railway ssh into a deployment
+make shell SHELL_ARGS="local"           # a shell in the current environment
+make uvm-shell                          # run the UVM image locally and drop into bash
+```
+
+- **Codespaces / devcontainer** — you already have a terminal; inside it `make shell`
+  resolves to `local` (a login shell in the container). `docker/shell.sh` also works
+  to hop into any *other* running container (e.g. a swarm worker) via `docker exec`.
+- **Local Docker** — `make uvm-shell` runs the image with the `shell` argument, which
+  `docker/entrypoint.sh` turns into an interactive `bash -l` (with `VERILATOR`/
+  `UVM_HOME` already set). `make shell SHELL_ARGS="docker <name>"` attaches to one
+  that is already running.
+- **Railway** — the gate is a run-to-completion batch job, so there is normally no
+  container to attach to. Deploy with **`KEEP_ALIVE=1`** (run the gate, then hold the
+  container open) or **`DEBUG_SHELL=1`** (skip the gate, hold a shell open) — both are
+  `railway.ts` variables read by the entrypoint — then `make shell SHELL_ARGS=railway`
+  (i.e. `railway ssh`) connects. Set the variable in the Railway dashboard or with
+  `railway variables set KEEP_ALIVE=1`.
+
+This is an off-gate convenience (logic in `docker/shell.sh` + `docker/entrypoint.sh`);
+nothing in `lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare` depends on it.

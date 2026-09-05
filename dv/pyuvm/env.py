@@ -16,7 +16,7 @@ reached block lock).
 """
 from pyuvm import (uvm_env, uvm_scoreboard, uvm_tlm_analysis_fifo, ConfigDB)
 
-from agents.fdi_agent import FdiAgent, PipeTxMonitor
+from agents.fdi_agent import FdiAgent, PipeTxMonitor, PKT_TRACK
 import framing_model as fm
 
 PIPE_WIDTH = 80   # matches ucie2_pipe7_bridge PW default (PIPE_WIDTH_DEFAULT)
@@ -90,6 +90,12 @@ class BridgeScoreboard(uvm_scoreboard):
         self.logger.info(
             f"[SB] driven={n} recovered={len(recovered)} "
             f"stream_words={len(stream)} model_words={len(model_stream)}")
+
+        if PKT_TRACK:
+            self.logger.info(
+                f"[PKT] summary: driven={n} recovered={len(recovered)} "
+                f"tx_words={len(stream)} sync_errors={mon.sync_errors} "
+                f"block_locked={int(mon.saw_lock)}")
 
         assert not self.errors, \
             "integrated-bridge cross-check failed:\n  " + "\n  ".join(self.errors)

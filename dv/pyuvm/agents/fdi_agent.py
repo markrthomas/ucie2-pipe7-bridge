@@ -17,13 +17,25 @@ the sequence coroutine happens to be scheduled), it reproduces the B4 directed
 clock edge, where cocotb returns settled (post-edge) values -- the cocotb-side
 equivalent of the SV emitter's ``#0.1`` post-edge sampling.
 """
+import os
+
 import cocotb
 from cocotb.triggers import RisingEdge
+from cocotb.utils import get_sim_time
 from pyuvm import (uvm_sequence_item, uvm_driver, uvm_monitor, uvm_agent,
                    uvm_sequencer, uvm_analysis_port, ConfigDB)
 
 FDI_ACTIVE   = 1     # ucie2_pipe7_pkg::FDI_ACTIVE
 BRINGUP_LCLK = 8     # fixed cycles to let the link reach ACTIVE (matches SV TB)
+
+# ---- Packet-tracking mode (opt-in via PKT_TRACK=1; off by default) -----------
+# When on, the driver/monitors emit `[PKT]` log lines tracing each flit end-to-end
+# through the bridge: DRIVE (FDI TX) -> TXWORD (PIPE framer out) -> RECOVER (FDI
+# RX), plus LOCK/SYNCERR deframer transitions. Every emit is a log call at zero
+# sim-time, so it never adds an edge wait or shifts the fixed cycle schedule -- the
+# byte-identical per-cycle trace (build/bridge.trace) and the green gate are
+# unchanged when PKT_TRACK is unset. Mirrors the SV UVM `+PKT_TRACK` plusarg.
+PKT_TRACK = os.environ.get("PKT_TRACK", "").strip().lower() not in ("", "0", "false", "no")
 
 
 def _i(handle):
@@ -32,6 +44,13 @@ def _i(handle):
         return int(handle.value)
     except Exception:
         return 0
+
+
+def _pkt(comp, msg):
+    """Emit one `[PKT]` packet-tracking line (opt-in). Zero sim-time: safe to call
+    from any driver/monitor without perturbing the cycle-accurate schedule."""
+    if PKT_TRACK:
+        comp.logger.info(f"[PKT] {msg}  @{get_sim_time('ns'):.1f}ns")
 
 
 class FdiFlit(uvm_sequence_item):
@@ -65,7 +84,7 @@ class FdiDriver(uvm_driver):
         for _ in range(BRINGUP_LCLK):
             await RisingEdge(dut.lclk)
 
-        for _ in range(n_flits):
+        for i in range(n_flits):
             flit = await self.seq_item_port.get_next_item()   # driver-led: returns in-delta
             dut.lp_data.value  = flit.data
             dut.lp_valid.value = 1
@@ -79,6 +98,7 @@ class FdiDriver(uvm_driver):
                 if _i(dut.pl_trdy):
                     break
             self.ap.write((flit.data, bool(flit.is_os)))
+            _pkt(self, f"DRIVE   fdi flit #{i:<4d} data=0x{flit.data:032x} is_os={int(flit.is_os)}")
             self.seq_item_port.item_done()
 
         dut.lp_valid.value = 0
@@ -90,13 +110,17 @@ class FdiRxMonitor(uvm_monitor):
     publishes each recovered payload for the round-trip check."""
     def build_phase(self):
         self.ap = uvm_analysis_port("ap", self)
+        self._rx_i = 0
 
     async def run_phase(self):
         dut = cocotb.top
         while True:
             await RisingEdge(dut.lclk)
             if _i(dut.pl_valid):
-                self.ap.write(_i(dut.pl_data))
+                data = _i(dut.pl_data)
+                self.ap.write(data)
+                _pkt(self, f"RECOVER fdi flit #{self._rx_i:<4d} data=0x{data:032x}")
+                self._rx_i += 1
 
 
 class PipeTxMonitor(uvm_monitor):
@@ -106,16 +130,26 @@ class PipeTxMonitor(uvm_monitor):
         self.stream_ap = uvm_analysis_port("stream_ap", self)
         self.sync_errors = 0
         self.saw_lock = False
+        self._w_i = 0
+        self._locked_prev = 0
 
     async def run_phase(self):
         dut = cocotb.top
         while True:
             await RisingEdge(dut.pclk)
             if _i(dut.tx_data_valid):
-                self.stream_ap.write(_i(dut.tx_data))
+                word = _i(dut.tx_data)
+                self.stream_ap.write(word)
+                _pkt(self, f"TXWORD  pipe word #{self._w_i:<4d} data=0x{word:020x}")
+                self._w_i += 1
+            locked = _i(dut.block_locked)
+            if locked and not self._locked_prev:
+                _pkt(self, "LOCK    deframer reached block_locked")
+            self._locked_prev = locked
             if _i(dut.sync_error):
                 self.sync_errors += 1
-            if _i(dut.block_locked):
+                _pkt(self, f"SYNCERR deframer sync_error (count={self.sync_errors})")
+            if locked:
                 self.saw_lock = True
 
 
