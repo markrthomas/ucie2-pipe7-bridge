@@ -15,8 +15,12 @@
 # =============================================================================
 
 VERILATOR ?= verilator
-UVM_HOME  ?= $(error Set UVM_HOME to the bundled Verilator UVM dir, e.g. \
-  ~/verilator/test_regress/t/uvm)
+# UVM_HOME must point at the bundled Accellera UVM dir for lint/run/ci (and the b2b
+# variants) -- enforced by the `_require-uvm-home` guard those targets depend on.
+# It is left EMPTY (not a parse-time $(error)) so targets that don't need it -- most
+# importantly `clean` -- parse and run without it; a stale $(error) here fired for
+# every target, including `make clean`.
+UVM_HOME  ?=
 
 UVM_HDR := $(UVM_HOME)/uvm_pkg_all_v2020_3_1_dpi.svh
 UVM_DPI := $(UVM_HOME)/v2020_3_1/dpi/uvm_dpi.cc
@@ -65,16 +69,24 @@ STIM_PLUSARGS := $(if $(VEC),+VEC=$(VEC)) $(if $(VEC_WORDS),+VEC_WORDS=$(VEC_WOR
                  $(if $(N_FLITS),+N_FLITS=$(N_FLITS)) $(if $(RUN_PCLK),+RUN_PCLK=$(RUN_PCLK)) \
                  $(if $(PKT_TRACK),+PKT_TRACK)
 
-.PHONY: lint run ci clean
+.PHONY: lint run ci clean _require-uvm-home
+
+# Guard: fail with a clear message ONLY when a target that needs the bundled UVM
+# library actually runs (lint/run/ci + the b2b variants list it as a prereq).
+# `clean` and plain parsing never trigger it.
+_require-uvm-home:
+	@if [ -z "$(UVM_HOME)" ]; then \
+	  echo "Set UVM_HOME to the bundled Verilator UVM dir, e.g. ~/verilator/test_regress/t/uvm" >&2; \
+	  exit 1; fi
 
 # Elaborate-only: the RAM-safe gate that runs on the local host.
-lint:
+lint: _require-uvm-home
 	$(VERILATOR) $(LINTFLAGS) --top-module $(TOP) $(INCS) $(UVM_HDR) $(SRCS)
 	@echo "[lint-uvm] SV UVM env elaborates OK"
 
 # Full build + run — CI / Railway only. Fails on any UVM_ERROR/UVM_FATAL, and on
 # any `[SVA]` failure from the bound checker (ucie2_pipe7_sva.sv).
-run:
+run: _require-uvm-home
 	rm -rf $(OBJ)
 	mkdir -p $(OBJ)
 	$(VERILATOR) $(VFLAGS) --top-module $(TOP) --Mdir $(OBJ) $(INCS) \
@@ -113,11 +125,11 @@ B2B_PCIE_SRCS := $(RTL_SRCS) $(B2B)/b2b_pcie_if.sv $(B2B)/b2b_pcie_uvm_pkg.sv \
 lint-b2b: lint-b2b-ucie lint-b2b-pcie
 run-b2b:  run-b2b-ucie run-b2b-pcie
 
-lint-b2b-ucie:
+lint-b2b-ucie: _require-uvm-home
 	$(VERILATOR) $(LINTFLAGS) --top-module tb_b2b_ucie $(INCS) $(UVM_HDR) $(B2B_UCIE_SRCS)
 	@echo "[lint-uvm] B2B UCIe env elaborates OK"
 
-lint-b2b-pcie:
+lint-b2b-pcie: _require-uvm-home
 	$(VERILATOR) $(LINTFLAGS) --top-module tb_b2b_pcie $(INCS) $(UVM_HDR) $(B2B_PCIE_SRCS)
 	@echo "[lint-uvm] B2B PCIe env elaborates OK"
 
@@ -132,14 +144,14 @@ define B2B_RUN_CHECK
 	else echo "PASS: clean UVM report (0 errors, 0 fatals)"; fi
 endef
 
-run-b2b-ucie:
+run-b2b-ucie: _require-uvm-home
 	rm -rf $(OBJ)/b2b_ucie && mkdir -p $(OBJ)/b2b_ucie
 	$(VERILATOR) $(VFLAGS) --top-module tb_b2b_ucie --Mdir $(OBJ)/b2b_ucie $(INCS) \
 	  $(UVM_HDR) $(UVM_DPI) $(B2B_UCIE_SRCS)
 	$(OBJ)/b2b_ucie/Vtb_b2b_ucie $(UVM_PLUSARGS) $(STIM_PLUSARGS) 2>&1 | tee $(OBJ)/b2b_ucie/run.log
 	$(call B2B_RUN_CHECK,$(OBJ)/b2b_ucie)
 
-run-b2b-pcie:
+run-b2b-pcie: _require-uvm-home
 	rm -rf $(OBJ)/b2b_pcie && mkdir -p $(OBJ)/b2b_pcie
 	$(VERILATOR) $(VFLAGS) --top-module tb_b2b_pcie --Mdir $(OBJ)/b2b_pcie $(INCS) \
 	  $(UVM_HDR) $(UVM_DPI) $(B2B_PCIE_SRCS)
