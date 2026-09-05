@@ -169,7 +169,8 @@ help:
 	@echo "  make waves         dump an FST of the PyUVM round-trip             [local; OFF-GATE]"
 	@echo "                     (TEST=roundtrip|smoke|fcov; WAVES=1 build in"
 	@echo "                      dv/pyuvm/wave_build -> build/waves/test_<T>.fst;"
-	@echo "                      prints [WAVES] wrote …)"
+	@echo "                      roundtrip dumps the seeded-random default stimulus —"
+	@echo "                      LEN/SEED/PROFILE apply, like make pyuvm; prints [WAVES] wrote …)"
 	@echo "  make wave          make waves, then open it in GTKWave             [local; OFF-GATE]"
 	@echo "                     (layout dv/waves/<TEST>.gtkw, else default.gtkw;"
 	@echo "                      needs a display — apt gtkwave, not OSS CAD Suite)"
@@ -467,9 +468,23 @@ WAVE_FST    := $(WAVE_DIR)/$(WAVE_MODULE).fst
 WAVE_LAYOUT := $(if $(wildcard $(WAVE_LAYOUT_DIR)/$(TEST).gtkw),\
                  $(WAVE_LAYOUT_DIR)/$(TEST).gtkw,$(WAVE_LAYOUT_DIR)/default.gtkw)
 
-waves:
+# The default roundtrip test dumps the SAME seeded-random stimulus as `make pyuvm`
+# (PROFILE/LEN/SEED apply, RUN_PCLK auto-scales) by generating + feeding the shared
+# vector; without it the roundtrip test falls back to the committed directed ramp.
+# smoke/fcov carry their own stimulus, so they need neither the vec nor RUN_PCLK.
+# LOCAL_ENV mirrors `make pyuvm` so the local oss-cad box uses the working toolchain
+# (inert in CI). Set PROFILE=ramp for the directed ramp, or TEST=smoke/fcov.
+ifeq ($(TEST),roundtrip)
+  WAVE_DEPS := gen-vectors
+  WAVE_STIM := VEC="$(VEC)" RUN_PCLK="$(RUN_PCLK)"
+else
+  WAVE_DEPS :=
+  WAVE_STIM :=
+endif
+
+waves: $(WAVE_DEPS)
 	@mkdir -p $(WAVE_DIR)
-	$(MAKE) -C dv/pyuvm WAVES=1 SIM=verilator MODULE=$(WAVE_MODULE) \
+	$(LOCAL_ENV) $(WAVE_STIM) $(MAKE) -C dv/pyuvm WAVES=1 SIM=verilator MODULE=$(WAVE_MODULE) \
 	  WAVE_DIR=$(abspath $(WAVE_DIR))
 	@if [ ! -s $(WAVE_FST) ]; then \
 	  echo "[WAVES] ERROR: the WAVES=1 run produced no FST at $(WAVE_FST)"; exit 1; fi
