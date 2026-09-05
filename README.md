@@ -59,6 +59,14 @@ flowchart LR
 ## Quick start (local, ~8 GB host)
 
 ```bash
+make tools       # check the toolchain, install what is MISSING (apt + pip)
+make tools-check # report only, install nothing (exit non-zero if a CORE tool is absent)
+# Core (lint/pyuvm/fcov) is apt verilator/iverilog + pip cocotb/pyuvm/cocotb_coverage;
+# formal (yosys/z3/sby) and waves (gtkwave) are optional. The from-source UVM-capable
+# Verilator (only for the CI/Railway `make uvm` --binary gate) is opt-in and slow:
+make tools TOOLS_HEAVY=1   # also build Verilator >=5.050 from source into ~/verilator
+# NOT OSS CAD Suite (see "Toolchain policy"). Logic: tools/check_tools.sh.
+
 make lint       # RTL strict lint (Verilator -Wall)
 make pyuvm      # PyUVM-on-cocotb tier (default round-trip; needs a cocotb simulator)
 
@@ -561,6 +569,37 @@ This project **does not use OSS CAD Suite.** The reproducible environments
 and the PyUVM tier, and build a **UVM-capable Verilator ≥ 5.050 from source** for
 the SV UVM `--binary` gate. Locally the Makefile takes `VERILATOR`/`IVERILOG`
 overrides so it runs with whatever is on your PATH.
+
+### Bootstrapping the toolchain — `make tools`
+
+`make tools` checks every tier's tools and installs the **missing** ones (apt +
+pip, mirroring the containers above — never OSS CAD Suite). `make tools-check` is
+the read-only form: it reports the same table and installs nothing, exiting
+non-zero only if a **core** tool is absent (optional gaps are non-fatal), so it is
+safe to run as a CI/audit gate. The logic lives in `tools/check_tools.sh` and, like
+`make formal`, degrades gracefully — no `apt-get` on PATH → it prints the packages
+to install by hand rather than failing hard.
+
+| Tier | Needed by | Tools | Source |
+|------|-----------|-------|--------|
+| **core** | `make lint` / `pyuvm` / `fcov` | `git make g++ python3 pip verilator iverilog`, py `cocotb` `pyuvm` | apt + pip |
+| **formal** | `make formal` (post-gate) | `yosys` `z3` `sby` | apt + pip `click` + [YosysHQ/sby](https://github.com/YosysHQ/sby) source |
+| **waves** | `make wave*` (off-gate) | `gtkwave` | apt |
+| **heavy** | `make uvm` `--binary` (CI/Railway) | UVM-capable Verilator ≥ 5.050 + bundled `UVM_HOME` | from source (**opt-in**) |
+
+```bash
+make tools                 # install everything missing in the light tiers (apt + pip)
+make tools-check           # report only; non-zero exit if a CORE tool is missing
+make tools TOOLS_HEAVY=1   # ALSO build Verilator >=5.050 from source into ~/verilator
+```
+
+The heavy from-source Verilator is a multi-minute, several-hundred-MB build needed
+only for the CI/Railway `make uvm` gate — the local host lint/elaborates the SV UVM
+env instead (`make lint-uvm`) — so it is **opt-in** (`TOOLS_HEAVY=1`); otherwise it
+is reported with the exact build command. apt installs use `sudo` when not root;
+pip uses `--break-system-packages` (Debian/Ubuntu PEP-668), matching CI. The
+committed containers (`Dockerfile`, `Dockerfile.dev`) remain the authoritative
+build recipe — `make tools` is a convenience that tracks them for a bare host.
 
 ## Codespaces
 

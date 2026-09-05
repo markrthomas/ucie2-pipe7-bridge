@@ -92,6 +92,13 @@ CI; it can also be run locally under Verilator (`make fcov FCOV_SIM=verilator`,
 needs `pip install "cocotb==1.9.2" "cocotb_coverage==1.2.0" "pyuvm==4.0.1"`).
 Local system Icarus is 11.0 (too old — SV package syntax); CI uses apt Icarus 12.
 
+`make tools` audits the whole toolchain (core/formal/waves/heavy tiers) and
+installs the missing light-tier pieces via apt+pip; `make tools-check` reports
+only (non-zero exit iff a *core* tool is absent — safe as a CI/audit gate). The
+from-source UVM Verilator is opt-in (`make tools TOOLS_HEAVY=1`) since it OOM-heavy
+builds for minutes; logic in `tools/check_tools.sh`, tracking the `Dockerfile*`
+recipes (still NOT OSS CAD Suite).
+
 ## Repo / workflow gotchas
 
 - **`origin` is SSH (`git@github.com:markrthomas/ucie2-pipe7-bridge.git`) and SSH
