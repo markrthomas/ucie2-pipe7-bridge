@@ -21,7 +21,13 @@ class fdi_driver extends uvm_driver#(fdi_flit_item);
   // lclk honoring #0.1 post-edge writes, then deassert.
   virtual task drive();
     int unsigned n_flits;
+    bit          pkt_track;
     if (!$value$plusargs("N_FLITS=%d", n_flits)) n_flits = N_FLITS;
+    // Packet-tracking mode (opt-in via +PKT_TRACK; off by default). Read once; the
+    // per-flit `uvm_info below is zero sim-time, so it never adds an edge wait or
+    // shifts the schedule -- the byte-identical trace is unchanged. Mirrors the
+    // PyUVM PKT_TRACK env switch.
+    pkt_track = $test$plusargs("PKT_TRACK");
     vif.lp_state_req = FDI_ACTIVE;
     repeat (BRINGUP_LCLK) @(posedge vif.lclk);
     for (int i = 0; i < n_flits; i++) begin
@@ -36,6 +42,9 @@ class fdi_driver extends uvm_driver#(fdi_flit_item);
       // the schedule is unchanged. Mirrors the PyUVM driver's pl_trdy gate.
       do begin @(posedge vif.lclk); #0.1; end while (!vif.pl_trdy);
       drv_ap.write(req.data);                     // accepted this cycle
+      if (pkt_track)
+        `uvm_info("PKT", $sformatf("DRIVE   fdi flit #%0d data=%h is_os=%0d @%0t",
+                                   i, req.data, req.is_os, $realtime), UVM_LOW)
       seq_item_port.item_done();                 // zero sim time
     end
     #0.1;

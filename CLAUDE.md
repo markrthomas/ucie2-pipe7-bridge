@@ -63,6 +63,16 @@ PASSED`). `make formal` uses apt `yosys` + SymbiYosys (YosysHQ/sby) + `z3` — s
 properties live in `formal/*_formal.sv` boundary wrappers; `rtl/` is never edited
 (see `README.md` → "Formal").
 
+Two **opt-in, off-gate** observability/ops switches, both no-ops by default:
+`PKT_TRACK=1` (`make pyuvm`/`make uvm`) adds `[PKT]` packet-tracking log lines
+tracing each flit DRIVE→TXWORD→RECOVER in both TBs — zero sim-time logging in the
+drivers/monitors (never the sacred `ucie2_roundtrip_test.sv` run_phase), so the
+byte-identical trace is unchanged (verified). `make shell` / `make uvm-shell` open a
+terminal into a running container (Codespaces/Railway/Docker) via `docker/shell.sh`
++ the entrypoint's `shell`/`KEEP_ALIVE=1`/`DEBUG_SHELL=1` hooks — on Railway the
+batch job must be deployed with `KEEP_ALIVE=1` for `railway ssh` to have something
+to attach to.
+
 ## Locked scope (decided 2026-08-31 — see PLAN §2)
 
 - **UCIe side: FDI** (Flit-Aware D2D Interface), UCIe 2.0. Not RDI — the

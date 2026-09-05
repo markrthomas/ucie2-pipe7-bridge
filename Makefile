@@ -82,6 +82,11 @@ VEC      := $(abspath dv/common/vectors/build/fdi_flits.vec)
 # pre-framed word vector; the PyUVM tier reads the identical file.
 VEC_WORDS := $(abspath dv/common/vectors/build/fdi_words.vec)
 GEN_VEC  := dv/common/vectors/gen_vectors.py
+# Packet-tracking mode: PKT_TRACK=1 makes both tiers emit `[PKT]` log lines tracing
+# each flit end-to-end (DRIVE -> TXWORD -> RECOVER + LOCK/SYNCERR). Opt-in and
+# zero sim-time, so the byte-identical trace and the gate are unchanged when unset.
+# PyUVM reads it as an env var; the SV UVM tier as the +PKT_TRACK plusarg.
+PKT_TRACK ?=
 ifeq ($(SEED),random)
   SEED_RESOLVED := $(shell $(PYTHON) -c "import random;print(hex(random.getrandbits(64)))")
 else
@@ -111,6 +116,8 @@ help:
 	@echo "                      LEN=<n> flits, SEED=<int>|random, PROFILE=random|ramp,"
 	@echo "                      RUN_PCLK=<n>; e.g. make pyuvm LEN=64. Both TBs read one"
 	@echo "                      generated vector so trace-compare stays byte-identical.)"
+	@echo "                     (PKT_TRACK=1 adds [PKT] packet-tracking log lines tracing"
+	@echo "                      each flit DRIVE->TXWORD->RECOVER; opt-in, trace unchanged.)"
 	@echo "  make gen-vectors   (re)generate the shared stimulus vector        [local]"
 	@echo "                     (dv/common/vectors/build/fdi_flits.vec via gen_vectors.py)"
 	@echo "  make fcov          functional coverage (cocotb_coverage)        [local]"
@@ -186,6 +193,11 @@ help:
 	@echo "  make swarm             DV swarm: manager+subagents, opens a PR   [needs claude + creds]"
 	@echo "  make railway-swarm-agents  Railway ca --claude swarm (alt path) [dry-run; SWARM_APPLY=1]"
 	@echo "                             (heavy --binary + trace_compare stay in CI)"
+	@echo "  make shell         open a terminal into a running container       [Codespaces/Railway/Docker]"
+	@echo "                     (auto-detects railway->docker->local; override with"
+	@echo "                      SHELL_ARGS=\"docker <name>\" or \"railway <svc>\";"
+	@echo "                      Railway needs a KEEP_ALIVE=1 deploy — see .railway/railway.ts)"
+	@echo "  make uvm-shell     run the UVM image locally, drop into a shell    [Docker]"
 	@echo "  make clean         remove build artifacts"
 
 # ---- Toolchain check / install ----------------------------------------------
@@ -222,7 +234,7 @@ gen-vectors:
 # Delegates to the cocotb Makefile. SIM/simulator selection lives there. VEC +
 # RUN_PCLK are exported so the test drives the shared vector for the run length.
 pyuvm: gen-vectors
-	$(LOCAL_ENV) VEC="$(VEC)" RUN_PCLK="$(RUN_PCLK)" $(MAKE) -C dv/pyuvm
+	$(LOCAL_ENV) VEC="$(VEC)" RUN_PCLK="$(RUN_PCLK)" PKT_TRACK="$(PKT_TRACK)" $(MAKE) -C dv/pyuvm
 
 # ---- Functional coverage tier (cocotb_coverage; Icarus in CI) ---------------
 # Directed-ramp coverage: independent of the random default (its own committed vec).
@@ -300,7 +312,8 @@ lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci:
 # Reads the SAME shared vector as pyuvm (via +VEC/+N_FLITS/+RUN_PCLK plusargs) so
 # the byte-identical cross-check holds for the seeded-random default.
 uvm: gen-vectors
-	$(MAKE) -C dv/uvm/vlt run VEC="$(VEC)" N_FLITS="$(LEN)" RUN_PCLK="$(RUN_PCLK)"
+	$(MAKE) -C dv/uvm/vlt run VEC="$(VEC)" N_FLITS="$(LEN)" RUN_PCLK="$(RUN_PCLK)" \
+	  PKT_TRACK="$(PKT_TRACK)"
 
 # ---- Cycle-accurate cross-check: PyUVM trace vs UVM trace -------------------
 trace-compare:
@@ -535,6 +548,22 @@ swarm:
 # Point at whatever railway binary is on PATH (falls back to `railway`).
 RAILWAY_CLI ?= $(shell command -v railway 2>/dev/null || echo railway)
 SWARM_ENV   ?=
+
+# ---- Interactive shell into a running container (Codespaces/Railway/Docker) --
+# `shell` opens a terminal into a RUNNING container wherever it lives (auto-detects
+# railway -> docker -> the current environment; override with
+# SHELL_ARGS="docker <name>" or "railway <svc>"). `uvm-shell` runs the UVM image
+# locally and drops straight into a shell. On Railway the gate is a batch job, so
+# deploy with KEEP_ALIVE=1 (see .railway/railway.ts) to keep the container up for
+# `railway ssh`. Off-gate dev convenience; logic in docker/shell.sh + entrypoint.sh.
+.PHONY: shell uvm-shell
+SHELL_ARGS ?=
+
+shell:
+	bash docker/shell.sh $(SHELL_ARGS)
+
+uvm-shell:
+	$(DOCKER) run --rm -it $(SWARM_IMAGE) shell
 
 clean:
 	-$(MAKE) -C dv/pyuvm clean

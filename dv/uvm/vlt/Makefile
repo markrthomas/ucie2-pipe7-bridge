@@ -58,8 +58,12 @@ VEC       ?=
 VEC_WORDS ?=
 N_FLITS   ?=
 RUN_PCLK  ?=
+# PKT_TRACK=1 -> add the +PKT_TRACK plusarg so the driver/monitors emit `[PKT]`
+# packet-tracking lines (opt-in, zero sim-time; the trace stays byte-identical).
+PKT_TRACK ?=
 STIM_PLUSARGS := $(if $(VEC),+VEC=$(VEC)) $(if $(VEC_WORDS),+VEC_WORDS=$(VEC_WORDS)) \
-                 $(if $(N_FLITS),+N_FLITS=$(N_FLITS)) $(if $(RUN_PCLK),+RUN_PCLK=$(RUN_PCLK))
+                 $(if $(N_FLITS),+N_FLITS=$(N_FLITS)) $(if $(RUN_PCLK),+RUN_PCLK=$(RUN_PCLK)) \
+                 $(if $(PKT_TRACK),+PKT_TRACK)
 
 .PHONY: lint run ci clean
 
