@@ -3,10 +3,11 @@ import { defineRailway, preserve, project, service } from "railway/iac";
 // Railway Infrastructure as Code — https://docs.railway.com/infrastructure-as-code
 //
 // This project is a hardware DV gate, not a web service: it has no listening
-// port. The container's ENTRYPOINT (docker/entrypoint.sh) runs `make -C
-// dv/uvm/vlt ci` (lint + the SV UVM --binary build+run under from-source
-// Verilator, UVM_ERROR-gated) and exits with the gate's status (0 = green). Run
-// it as a one-off / batch job, not an always-on service.
+// port. The container's ENTRYPOINT (docker/entrypoint.sh) runs `make uvm`
+// (gen-vectors + lint + the SV UVM --binary build+run under from-source
+// Verilator, UVM_ERROR-gated) -- the same seeded-random gate CI runs -- and exits
+// with the gate's status (0 = green). Run it as a one-off / batch job, not an
+// always-on service.
 
 export default defineRailway(() => {
   const uvm = service("ucie2-pipe7-uvm", {

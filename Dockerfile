@@ -4,8 +4,8 @@
 #
 # Reproduces the heavy UVM gate that cannot run on the ~8 GB local host: builds
 # UVM-capable Verilator from source (the apt Verilator can't elaborate UVM), then
-# runs `make -C dv/uvm/vlt ci` (lint + --binary build + run, UVM_ERROR-gated).
-# This project does NOT use OSS CAD Suite.
+# runs `make uvm` (gen-vectors + lint + --binary build + run, UVM_ERROR-gated) --
+# the same canonical target CI runs. This project does NOT use OSS CAD Suite.
 #
 #   Build:  docker build -t ucie2-pipe7-uvm .
 #   Run  :  docker run --rm ucie2-pipe7-uvm            # full UVM gate
