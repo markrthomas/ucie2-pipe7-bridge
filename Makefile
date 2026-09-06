@@ -170,7 +170,10 @@ help:
 	@echo "                     (TEST=roundtrip|smoke|fcov; WAVES=1 build in"
 	@echo "                      dv/pyuvm/wave_build -> build/waves/test_<T>.fst;"
 	@echo "                      roundtrip dumps the seeded-random default stimulus —"
-	@echo "                      LEN/SEED/PROFILE apply, like make pyuvm; prints [WAVES] wrote …)"
+	@echo "                      LEN/SEED/PROFILE apply, like make pyuvm; the dump is a"
+	@echo "                      FOCUSED window (WAVE_PCLK=40+4*LEN) so packets are visible,"
+	@echo "                      not the full drain — raise WAVE_PCLK to see the drain;"
+	@echo "                      prints [WAVES] wrote …)"
 	@echo "  make wave          make waves, then open it in GTKWave             [local; OFF-GATE]"
 	@echo "                     (layout dv/waves/<TEST>.gtkw, else default.gtkw;"
 	@echo "                      needs a display — apt gtkwave, not OSS CAD Suite)"
@@ -462,6 +465,16 @@ WAVE_DIR        ?= build/waves
 WAVE_LAYOUT_DIR ?= dv/waves
 GTKWAVE         ?= gtkwave
 
+# Waveform run length (roundtrip test). RUN_PCLK is sized for the trace-compare
+# DRAIN (worst-case backpressure) -- e.g. 480/1440/2720 cycles for LEN=8/32/64 --
+# but the round-trip's actual activity ends far earlier (~cycle 33/72/124), so
+# dumping RUN_PCLK cycles makes the FST ~15-20x idle and the packets vanish into a
+# sliver at t=0 in GTKWave. WAVE_PCLK is a FOCUSED window (~2x the measured
+# activity, activity ~= 24 + 1.6*LEN) so all packets are visible and the scoreboard
+# still passes (every flit recovers well inside it). Raise it to study the full
+# drain / backpressure, e.g. `make wave WAVE_PCLK=2720`, or set it to $(RUN_PCLK).
+WAVE_PCLK       ?= $(shell expr 40 + 4 \* $(LEN))
+
 WAVE_MODULE := test_$(TEST)
 WAVE_FST    := $(WAVE_DIR)/$(WAVE_MODULE).fst
 # Per-target layout if one is curated, else the shared default.
@@ -469,9 +482,10 @@ WAVE_LAYOUT := $(if $(wildcard $(WAVE_LAYOUT_DIR)/$(TEST).gtkw),\
                  $(WAVE_LAYOUT_DIR)/$(TEST).gtkw,$(WAVE_LAYOUT_DIR)/default.gtkw)
 
 # The default roundtrip test dumps the SAME seeded-random stimulus as `make pyuvm`
-# (PROFILE/LEN/SEED apply, RUN_PCLK auto-scales) by generating + feeding the shared
-# vector; without it the roundtrip test falls back to the committed directed ramp.
-# smoke/fcov carry their own stimulus, so they need neither the vec nor RUN_PCLK.
+# (PROFILE/LEN/SEED apply) by generating + feeding the shared vector; without it the
+# roundtrip test falls back to the committed directed ramp. It runs for WAVE_PCLK
+# cycles (the focused window above), NOT the full trace-compare drain, so the dump
+# is legible. smoke/fcov carry their own stimulus, so they need neither vec nor pclk.
 # Set PROFILE=ramp for the directed ramp, or TEST=smoke/fcov.
 #
 # NOTE: waves deliberately does NOT wrap the sim build in LOCAL_ENV (unlike
@@ -481,7 +495,7 @@ WAVE_LAYOUT := $(if $(wildcard $(WAVE_LAYOUT_DIR)/$(TEST).gtkw),\
 # (gen-vectors, the prereq, still runs under LOCAL_ENV via its own recipe.)
 ifeq ($(TEST),roundtrip)
   WAVE_DEPS := gen-vectors
-  WAVE_STIM := VEC="$(VEC)" RUN_PCLK="$(RUN_PCLK)"
+  WAVE_STIM := VEC="$(VEC)" RUN_PCLK="$(WAVE_PCLK)"
 else
   WAVE_DEPS :=
   WAVE_STIM :=
