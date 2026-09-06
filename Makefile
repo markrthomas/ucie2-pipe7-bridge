@@ -7,7 +7,8 @@
 #   make lint-uvm   ELABORATE-ONLY lint of the SV UVM env (never --binary here)
 #
 # CI / Railway container additionally run the heavy gates:
-#   make uvm        full SV UVM --binary build + run (from-source Verilator >=5.050)
+#   make uvm        full SV UVM gate: gen-vectors + lint + --binary build + run
+#                   (from-source Verilator >=5.050; the target the container runs)
 #   make trace-compare   cycle-accurate PyUVM-trace == UVM-trace diff
 #
 # Toolchain is overridable so this works with whatever is on PATH; the
@@ -129,7 +130,8 @@ help:
 	@echo "  (lint/pyuvm/fcov/lint-uvm/coverage auto-detect this oss-cad box and run"
 	@echo "   a clean local env; append -ci — e.g. 'make fcov-ci' — or LOCAL=0 to force"
 	@echo "   the canonical CI toolchain; LOCAL=1 forces local.)"
-	@echo "  make uvm           full SV UVM --binary build+run              [CI/Railway]"
+	@echo "  make uvm           full SV UVM gate: vectors+lint+--binary run [CI/Railway]"
+	@echo "                     (the canonical target the container entrypoint runs)"
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
 	@echo "  make coverage      RTL line coverage of the directed round-trip [local; post-gate]"
 	@echo "                     (Verilator --coverage-line; prints [COV] line=NN.N%"
@@ -312,11 +314,17 @@ lint-uvm:
 lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci:
 	$(MAKE) $(@:-ci=) LOCAL=0
 
-# ---- SV UVM env: full --binary build + run (CI/Railway only) ----------------
+# ---- SV UVM env: full lint + --binary build + run (CI/Railway only) ---------
+# The single canonical "start the SV UVM gate" target for BOTH CI and the
+# Railway/Docker container (docker/entrypoint.sh drives this exact target): it
+# regenerates the shared seeded-random vector, then runs the sub-Makefile `ci`
+# (RAM-safe elaborate-lint FIRST, then the --binary build+run, UVM_ERROR-gated).
 # Reads the SAME shared vector as pyuvm (via +VEC/+N_FLITS/+RUN_PCLK plusargs) so
-# the byte-identical cross-check holds for the seeded-random default.
+# the byte-identical cross-check holds for the seeded-random default. UVM_HOME +
+# VERILATOR come from the environment (container ENV / CI step / MAKE overrides)
+# and propagate to the sub-make as command-line vars.
 uvm: gen-vectors
-	$(MAKE) -C dv/uvm/vlt run VEC="$(VEC)" N_FLITS="$(LEN)" RUN_PCLK="$(RUN_PCLK)" \
+	$(MAKE) -C dv/uvm/vlt ci VEC="$(VEC)" N_FLITS="$(LEN)" RUN_PCLK="$(RUN_PCLK)" \
 	  PKT_TRACK="$(PKT_TRACK)"
 
 # ---- Cycle-accurate cross-check: PyUVM trace vs UVM trace -------------------

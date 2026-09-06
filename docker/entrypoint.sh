@@ -5,8 +5,11 @@
 # Appends the toolchain overrides to every `make` call so the bundled tools are
 # always used, and runs a memory preflight before the RAM-heavy --binary build.
 #
-#   (no args)        -> make -C dv/uvm/vlt ci   <overrides>   (full UVM gate)
-#   make <targets>   -> make -C dv/uvm/vlt <targets> <overrides>
+#   (no args)        -> make uvm   <overrides>   (full SV UVM gate, from repo root:
+#                       gen-vectors + lint + --binary build+run, seeded-random ==
+#                       CI; NOT `-C dv/uvm/vlt`, which skips the shared vector)
+#   make <targets>   -> make <targets> <overrides>  (repo-root targets, e.g.
+#                       `make uvm`, `make lint-uvm`, `make trace-compare`)
 #   shell            -> interactive shell now (local `docker run -it ... shell`),
 #                       or, with no TTY, hold the container open for `railway ssh`
 #   <anything else>  -> exec verbatim (verilator --version, bash, ...)
@@ -67,20 +70,24 @@ open_shell() {
   else
     echo "[entrypoint] no TTY -> holding the container open. Attach with:"
     echo "[entrypoint]   railway ssh      (Railway)   |   docker exec -it <c> bash   (Docker)"
-    echo "[entrypoint]   then: cd /work && make -C dv/uvm/vlt lint ${MAKE_ARGS[*]}"
+    echo "[entrypoint]   then: cd /work && make lint-uvm ${MAKE_ARGS[*]}  (or: make uvm)"
     exec sleep infinity
   fi
 }
 
 # Run the gate WITHOUT exec (so KEEP_ALIVE can hold the container open afterward).
+# The gate is the repo-root `make uvm` (gen-vectors + lint + --binary build+run),
+# so the container verifies the SAME seeded-random stimulus as CI -- running the
+# sub-Makefile `ci` directly would skip gen-vectors and silently fall back to the
+# compiled-in directed ramp. UVM_HOME/VERILATOR/BUILD_JOBS ride in via MAKE_ARGS.
 run_gate() {
   if [ "$#" -eq 0 ]; then
     preflight_resources
-    make -C dv/uvm/vlt ci "${MAKE_ARGS[@]}"
+    make uvm "${MAKE_ARGS[@]}"
   elif [ "$1" = "make" ]; then
     shift
-    case " $* " in *" run "*|*" ci "*|*" all "*) preflight_resources ;; esac
-    make -C dv/uvm/vlt "$@" "${MAKE_ARGS[@]}"
+    case " $* " in *" uvm "*|*" uvm-b2b "*|*" run "*|*" ci "*|*" all "*) preflight_resources ;; esac
+    make "$@" "${MAKE_ARGS[@]}"
   else
     exec "$@"   # verbatim (verilator --version, bash, ...); replaces this process
   fi
