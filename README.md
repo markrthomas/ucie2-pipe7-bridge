@@ -645,6 +645,38 @@ the image and caches warm.
 `.railway/railway.ts` runs the SV UVM gate as a batch job (no listening port).
 See `.railway/README.md`.
 
+## Run `make uvm` remotely (offload the heavy build)
+
+The local box OOMs the `--binary` UVM build, so `make uvm-remote` runs it on a
+cloud runner from your laptop, streams it live, and lets you attach a controlling
+terminal on demand. **Same verbs for both backends**, picked by `RUNNER`:
+
+```bash
+APPLY=1 make uvm-remote                    # Railway (default)
+APPLY=1 make uvm-remote RUNNER=codespace   # GitHub Codespaces
+make uvm-attach        RUNNER=…            # terminal in the running job
+make uvm-remote-logs   RUNNER=…            # re-stream the run
+make uvm-remote-status RUNNER=…            # runner + run-session status
+APPLY=1 make uvm-remote-down RUNNER=…      # tear down / stop billing
+```
+
+`uvm-remote` and `uvm-remote-down` are **dry-run by default** (print the exact
+cloud commands, provision nothing); `APPLY=1` executes. Ctrl-C on a stream stops
+*viewing only* — the job keeps running; reattach with `uvm-remote-logs`/`uvm-attach`.
+
+- **`RUNNER=railway`** (`docker/remote.sh`) — deploys your **current local tree**
+  (uncommitted edits included) to the prod image, which already has the UVM
+  Verilator; sets `KEEP_ALIVE=1` so the container holds open after the gate for
+  attach. Size the instance ~8 GB (a ~6 GB preflight floor fails fast below it).
+  `RAILWAY_SVC=` overrides the service.
+- **`RUNNER=codespace`** (`docker/codespace.sh`) — a Codespace is a git clone, so
+  it runs **`CS_BRANCH`** (default `main`) — commit + push first. The devcontainer
+  ships only apt Verilator 5.020, so the first run **bootstraps** the from-source
+  UVM Verilator (`make tools TOOLS_HEAVY=1`, ~10 min, cached after) and runs
+  `make uvm` in a detached `tmux` session that survives disconnects. Defaults to a
+  16 GB `standardLinux32gb` machine; `CS_REPO`/`CS_BRANCH`/`CS_MACHINE`/`CS_NAME`
+  override.
+
 ## Shelling into a running container
 
 `make shell` opens an interactive terminal into a **running** container, wherever it

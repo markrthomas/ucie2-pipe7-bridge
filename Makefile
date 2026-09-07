@@ -204,9 +204,10 @@ help:
 	@echo "                      SHELL_ARGS=\"docker <name>\" or \"railway <svc>\";"
 	@echo "                      Railway needs a KEEP_ALIVE=1 deploy — see .railway/railway.ts)"
 	@echo "  make uvm-shell     run the UVM image locally, drop into a shell    [Docker]"
-	@echo "  make uvm-remote    run 'make uvm' on Railway + stream it      [dry-run; APPLY=1]"
-	@echo "                     (laptop can't fit the --binary build; Railway's image can."
-	@echo "                      Then on demand: make uvm-attach (terminal into the run),"
+	@echo "  make uvm-remote    run 'make uvm' remotely + stream it        [dry-run; APPLY=1]"
+	@echo "                     (laptop can't fit the --binary build; a remote runner can."
+	@echo "                      RUNNER=railway (default) or RUNNER=codespace. On demand"
+	@echo "                      (same RUNNER=): make uvm-attach (terminal into the run),"
 	@echo "                      uvm-remote-logs, uvm-remote-status, uvm-remote-down.)"
 	@echo "  make clean         remove build artifacts"
 
@@ -611,36 +612,49 @@ shell:
 uvm-shell:
 	$(DOCKER) run --rm -it $(SWARM_IMAGE) shell
 
-# ---- Run `make uvm` remotely on Railway, stream + attach on demand ----------
-# The local box OOMs the --binary UVM build; Railway's prod image already has the
-# from-source UVM Verilator and runs `make uvm`. `uvm-remote` deploys the CURRENT
-# working tree (uncommitted edits included) with KEEP_ALIVE=1 so the container
-# holds open for attach, then streams the run. DRY-RUN by default (prints the
-# railway commands, provisions nothing) since a deploy costs money: fire it with
-#   APPLY=1 make uvm-remote
-# Then, on demand: `make uvm-attach` (terminal in the running container),
+# ---- Run `make uvm` remotely (Railway or Codespaces), stream + attach --------
+# The local box OOMs the --binary UVM build; a remote runner has the RAM. Same
+# verbs for both backends, picked by RUNNER:
+#   RUNNER=railway   (default) docker/remote.sh    — prod image already has the
+#                    UVM Verilator; deploys the CURRENT local tree; KEEP_ALIVE=1
+#                    holds the container open for attach.
+#   RUNNER=codespace           docker/codespace.sh — runs CS_BRANCH (a Codespace
+#                    is a git clone, so commit+push first); bootstraps the UVM
+#                    Verilator (make tools TOOLS_HEAVY=1) then runs in tmux.
+# `uvm-remote` fires the run + streams it; DRY-RUN by default (prints the cloud
+# commands, provisions nothing) since it costs money — fire it with:
+#   APPLY=1 make uvm-remote                 # Railway (default)
+#   APPLY=1 make uvm-remote RUNNER=codespace
+# Then, on demand (add the same RUNNER=): `make uvm-attach` (terminal in the run),
 # `make uvm-remote-logs` (re-stream), `make uvm-remote-status`, and
-# `make uvm-remote-down` (APPLY=1 to actually tear down / stop billing).
-# RAILWAY_SVC overrides the service name (default ucie2-pipe7-uvm). Logic lives in
-# docker/remote.sh; the attach reuses docker/shell.sh's railway mode.
+# `make uvm-remote-down` (APPLY=1 to tear down / stop billing). Overrides:
+# RAILWAY_SVC (Railway service), CS_REPO/CS_BRANCH/CS_MACHINE (Codespaces).
 .PHONY: uvm-remote uvm-remote-logs uvm-attach uvm-remote-status uvm-remote-down
+RUNNER      ?= railway
 RAILWAY_SVC ?= ucie2-pipe7-uvm
-REMOTE_ENV  := RAILWAY="$(RAILWAY_CLI)" RAILWAY_SVC="$(RAILWAY_SVC)" APPLY="$(APPLY)"
+GH_CLI      ?= $(shell command -v gh 2>/dev/null || echo gh)
+CS_REPO     ?= markrthomas/ucie2-pipe7-bridge
+CS_BRANCH   ?= main
+CS_MACHINE  ?= standardLinux32gb
+# RUNNER=codespace (or cs) -> Codespaces backend; anything else -> Railway.
+REMOTE_BACKEND := docker/$(if $(filter codespace cs,$(RUNNER)),codespace,remote).sh
+REMOTE_ENV  := RAILWAY="$(RAILWAY_CLI)" RAILWAY_SVC="$(RAILWAY_SVC)" APPLY="$(APPLY)" \
+               GH="$(GH_CLI)" CS_REPO="$(CS_REPO)" CS_BRANCH="$(CS_BRANCH)" CS_MACHINE="$(CS_MACHINE)"
 
 uvm-remote:
-	$(REMOTE_ENV) bash docker/remote.sh up
+	$(REMOTE_ENV) bash $(REMOTE_BACKEND) up
 
 uvm-remote-logs:
-	$(REMOTE_ENV) bash docker/remote.sh logs
+	$(REMOTE_ENV) bash $(REMOTE_BACKEND) logs
 
 uvm-attach:
-	$(REMOTE_ENV) bash docker/remote.sh attach
+	$(REMOTE_ENV) bash $(REMOTE_BACKEND) attach
 
 uvm-remote-status:
-	$(REMOTE_ENV) bash docker/remote.sh status
+	$(REMOTE_ENV) bash $(REMOTE_BACKEND) status
 
 uvm-remote-down:
-	$(REMOTE_ENV) bash docker/remote.sh down
+	$(REMOTE_ENV) bash $(REMOTE_BACKEND) down
 
 clean:
 	-$(MAKE) -C dv/pyuvm clean
