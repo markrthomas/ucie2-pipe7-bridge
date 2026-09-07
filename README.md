@@ -11,6 +11,10 @@ SystemVerilog UVM-on-Verilator).
 > datapath is built in Phase B. See **`PLAN.md`** for the full plan and
 > **`CLAUDE.md`** for session orientation.
 
+> **New here?** **[`docs/TUTORIAL.md`](docs/TUTORIAL.md)** is a hands-on,
+> start-to-finish tour of this environment — what runs where (local / CI /
+> remote), every gate, and a troubleshooting table.
+
 ## Architecture (target)
 
 ```mermaid
