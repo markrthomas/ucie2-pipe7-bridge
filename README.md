@@ -5,11 +5,13 @@ controller-facing) to a **PCIe PIPE 7.1 MAC-facing** interface, verified by two
 independently-authored, **cycle-accurate** testbenches (PyUVM-on-cocotb and
 SystemVerilog UVM-on-Verilator).
 
-> **Status:** Phase A scaffold. The DUT is a boundary shell (ports + idle
-> defaults, no datapath yet); the environment — lint, both DV tiers, the
-> cycle-accurate cross-check, container, and CI — is wired and green. The
-> datapath is built in Phase B. See **`PLAN.md`** for the full plan and
-> **`CLAUDE.md`** for session orientation.
+> **Status:** Phases A–H complete — a full **Gen5** datapath verified by both
+> cycle-accurate TBs (PyUVM + SV UVM), back-to-back two-bridge integration, the
+> byte-identical trace cross-check, coverage, formal, metrics/dashboard, CI, and
+> Railway + Codespaces runners, all green. **Phase I — design completion** (the
+> FLAGGED spec items, error/recovery paths, Gen6 end-to-end, H3b) is the active
+> work: see **`docs/phase_i_design_completion.md`** and the AI handoff
+> **`docs/AI_RESTART.md`**. Full plan in **`PLAN.md`**; orientation in **`CLAUDE.md`**.
 
 > **New here?** **[`docs/TUTORIAL.md`](docs/TUTORIAL.md)** is a hands-on,
 > start-to-finish tour of this environment — what runs where (local / CI /

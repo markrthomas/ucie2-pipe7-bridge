@@ -202,26 +202,29 @@ predecessor (only the FDI front-end + top are new).
   rx_overflow=1) need an RX-inject wrapper — FLAGGED for Phase F.
 
 ### Phase D — DV tier 2: SystemVerilog UVM-on-Verilator
-- [ ] **13. Shared SV UVM env** (`dv/uvm/sv`): interfaces, agents, seq_lib,
+- [x] **13. Shared SV UVM env** (`dv/uvm/sv`): interfaces, agents, seq_lib,
   scoreboard, per-cycle trace emitter mirroring the PyUVM format. Laid out
   UVM-Cookbook style (one class per file under `{fdi_agent,pipe_agent,env,test}/`,
   a single `` `include ``-driven package); a generated EDA Playground bundle lives
   in `dv/uvm/eda_playground/` (`make eda-playground`). See Phase G increment 5.
-- [ ] **14. Verilator `--binary` flow** (`dv/uvm/vlt`): `make -C dv/uvm/vlt lint`
-  runs **locally**; full build+run runs in **CI + Railway** only.
-- [ ] **15. `trace_compare.py` gate**: PyUVM trace ≡ UVM trace, cycle-exact.
-- [ ] **16. VCS/Xcelium mirror** (`dv/uvm/vcs`): authored + review-validated, not
+- [x] **14. Verilator `--binary` flow** (`dv/uvm/vlt`): `make lint-uvm`
+  runs **locally**; full `make uvm` build+run runs in **CI + Railway** only.
+- [x] **15. `trace_compare.py` gate**: PyUVM trace ≡ UVM trace, cycle-exact
+  (`make trace-compare`).
+- [~] **16. VCS/Xcelium mirror** (`dv/uvm/vcs`): authored + review-validated, not
   run here.
 
 ### Phase E — containerization + CI + reporting
-- [ ] **17. Railway image + IaC**: entrypoint runs the full gate; `railway config
-  plan/apply` documented.
-- [ ] **18. CI**: lint job (apt Verilator) + pyuvm job + uvm-verilator job
+- [x] **17. Railway image + IaC**: entrypoint runs the full gate (`make uvm`);
+  `railway config plan/apply` documented (`.railway/`). See also the laptop-driven
+  `make uvm-remote` (Railway/Codespaces) runners.
+- [x] **18. CI**: lint job (apt Verilator) + pyuvm job + uvm-verilator job
   (source-built 5.050, cached) + docker image + trace-compare gate.
-- [ ] **19. Codespaces prebuild** validated end-to-end (`make lint`, `make pyuvm`,
+- [x] **19. Codespaces prebuild** validated end-to-end (`make lint`, `make pyuvm`,
   `make lint-uvm`).
-- [ ] **20. Metrics report** (`tools/gen_report.py` → `report/`), modeled on the
-  predecessor + template.
+- [x] **20. Metrics report** — **superseded** by the Phase F4 committed metrics
+  store + offline dashboard (`make metrics` / `make dashboard`), which replaced the
+  planned `tools/gen_report.py → report/`.
 
 ### Phase F — hardening
 - [x] **F2. RTL line coverage (advisory)** — `make coverage` re-runs the directed
@@ -364,7 +367,8 @@ predecessor (only the FDI front-end + top are new).
   git-ignored; the template is committed.
 - [ ] **21+. Coverage closure, randomized waveform suite, error-path directed
   tests, overflow/accumulator guards, deeper/unbounded formal (k-induction on the
-  gearbox).** Enumerate once Phase E is green.
+  gearbox).** Enumerated + scheduled in **Phase I** (items I5/I7); deeper formal
+  remains a stretch.
 
 ### Phase H — back-to-back (B2B) two-bridge integration
 
@@ -415,7 +419,35 @@ these configs is deferred (H3).
   bridges locked, no sync_error. Verified LEN=8/32.
 - [ ] **H3b. Remaining:** full-duplex in the SV UVM tier, credit-based FDI-seam
   flow control for long bursts, and a **byte-identical PyUVM↔SV-UVM per-cycle
-  trace cross-check** for the B2B configs. Deferred.
+  trace cross-check** for the B2B configs. Scheduled as **Phase I item I8**.
+
+### Phase I — design completion (spec-fidelity + verification depth)
+
+Phases A–H delivered a complete, green environment and a Gen5 datapath verified by
+two cycle-accurate TBs + B2B integration. Phase I closes the remaining
+**design-correctness** gaps. Detail: **`docs/phase_i_design_completion.md`**; live
+work queue + AI handoff: **`docs/AI_RESTART.md`**. Every item keeps the green gate
+green and the byte-identical trace intact (un-FLAG a spec row only alongside the
+RTL change that resolves it). Subsumes items **G21+** and **H3b**.
+
+- [x] **I9. Housekeeping** — sync Phase D/E checkboxes + README status to reality
+  (this plan PR).
+- [ ] **I1. FDI link-state FSM + `fdi_state_e` encoding** — real FDI/LPIF bring-up
+  + retrain; pin §C encoding. `rtl/ucie2_fdi_link_fsm.sv`, `pkg.sv`, both TBs.
+  *(Recommended first — highest leverage.)*
+- [ ] **I2. `is_os` derivation + forwarding** (`ucie2_fdi_ingress.sv`, bridge top,
+  both TBs; un-FLAG §B.1).
+- [ ] **I3. `pl_flit_cancel` semantics** (`ucie2_fdi_egress.sv`; un-FLAG §B).
+- [ ] **I4. Management/sideband register mapping** to UCIe 2.0
+  (`pipe7_regfile.sv`, `pipe7_msgbus_master.sv`; un-FLAG §F).
+- [ ] **I5. Active error-injection DV** — RX-inject harness + directed error/
+  recovery tests (rx_overflow, deframer loss-of-lock, FIFO overflow, backpressure).
+  Closes the item-12 RX-inject FLAG + G21+ error paths.
+- [ ] **I6. Gen6 PAM4 end-to-end** round-trip in both TBs + Gen5↔Gen6 rate switch.
+- [ ] **I7. Constrained-random expansion + functional-coverage closure** (rest of
+  G21+).
+- [ ] **I8. H3b** — full-duplex SV UVM tier + credit-based FDI seam + B2B
+  trace-compare gate.
 
 ## 8. Per-commit green gate
 
