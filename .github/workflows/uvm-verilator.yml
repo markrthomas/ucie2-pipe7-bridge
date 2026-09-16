@@ -72,6 +72,9 @@ jobs:
       - name: PyUVM tier
         run: make pyuvm
 
+      - name: FDI link-FSM control-plane test (Phase I I1)
+        run: make link-fsm
+
       - name: Cycle-accurate cross-check (PyUVM trace == UVM trace)
         run: make trace-compare
 

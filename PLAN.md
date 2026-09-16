@@ -432,9 +432,14 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
 
 - [x] **I9. Housekeeping** — sync Phase D/E checkboxes + README status to reality
   (this plan PR).
-- [ ] **I1. FDI link-state FSM + `fdi_state_e` encoding** — real FDI/LPIF bring-up
-  + retrain; pin §C encoding. `rtl/ucie2_fdi_link_fsm.sv`, `pkg.sv`, both TBs.
-  *(Recommended first — highest leverage.)*
+- [x] **I1. FDI link-state FSM + `fdi_state_e` encoding** — DONE. Enriched
+  `ucie2_fdi_link_fsm` with a real multi-cycle RETRAIN (auto-returns to ACTIVE) and
+  the full managed state set (L1/L2/LINKRESET/DISABLED + sticky LINKERROR with
+  request-driven recovery); pinned the §C encoding (un-FLAGGED, impl-defined stable).
+  New control-plane test `dv/pyuvm/test_link_fsm.py` (`make link-fsm`, in CI). The
+  round-trip path is byte-identical by construction (it only ever requests ACTIVE, so
+  the FSM never enters RETRAIN). Cold multi-phase training bring-up left as a noted
+  future increment.
 - [ ] **I2. `is_os` derivation + forwarding** (`ucie2_fdi_ingress.sv`, bridge top,
   both TBs; un-FLAG §B.1).
 - [ ] **I3. `pl_flit_cancel` semantics** (`ucie2_fdi_egress.sv`; un-FLAG §B).

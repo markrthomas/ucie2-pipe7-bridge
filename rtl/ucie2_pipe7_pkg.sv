@@ -24,9 +24,12 @@ package ucie2_pipe7_pkg;
   parameter int unsigned FDI_FLIT_BYTES = 256;
   /* verilator lint_on UNUSEDPARAM */
 
-  // FDI link states. The state SET is FDI/LPIF-aligned; the numeric encodings
-  // are our choice.
-  // FLAGGED: fdi_state_e encodings not spec-pinned (crosscheck section C).
+  // FDI link states. The state SET is FDI/LPIF-aligned; LPIF leaves the wire
+  // encoding to the implementation, so these 4-bit values are PINNED as an
+  // implementation-defined, stable encoding (Phase I I1; crosscheck §C — resolved,
+  // no longer FLAGGED). Rationale: RESET=0 so a reset lands in it; ACTIVE=1 (the
+  // operational state); 2..3 the low-power states; 4..7 the management/error
+  // states. Consumed by ucie2_fdi_link_fsm and both TBs — treat as ABI-stable.
   typedef enum logic [3:0] {
     FDI_RESET     = 4'd0,
     FDI_ACTIVE    = 4'd1,
