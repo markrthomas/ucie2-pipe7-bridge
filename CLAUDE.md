@@ -7,8 +7,14 @@ Orientation for a Claude Code session in this repo.
 A ground-up **UCIe 2.0 ↔ PCIe PIPE 7.1** MAC-facing bridge IP in SystemVerilog,
 verified by **two independently-authored, cycle-accurate testbenches** (PyUVM and
 SystemVerilog UVM-on-Verilator). Full scope, decisions, and the phased build-out
-are in **`PLAN.md` — read it first.** Nothing is built yet; `PLAN.md` and this
-file are the initial deliverable.
+are in **`PLAN.md` — read it first.**
+
+**Current state (2026-09-16):** Phases A–H done — a complete, green environment and
+a Gen5 datapath verified by both TBs + B2B integration. Active work is **Phase I —
+design completion** (the four FLAGGED contract items, error/recovery paths, Gen6
+end-to-end, and H3b). **Resuming an AI session? Read `docs/AI_RESTART.md`** — the
+live work queue + handoff — then `PLAN.md` §7 Phase I and
+`docs/phase_i_design_completion.md`. New to the whole env: `docs/TUTORIAL.md`.
 
 - **RTL/TB starting point:** `~/proj/ucie_rdi_to_pcie6_pipe7` (UCIe 1.0 RDI → PCIe
   6.x / PIPE 7.1). Mine its `src/`, `test/cocotb`, `test/uvm` for reusable blocks;
