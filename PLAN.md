@@ -440,8 +440,12 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
   round-trip path is byte-identical by construction (it only ever requests ACTIVE, so
   the FSM never enters RETRAIN). Cold multi-phase training bring-up left as a noted
   future increment.
-- [ ] **I2. `is_os` derivation + forwarding** (`ucie2_fdi_ingress.sv`, bridge top,
-  both TBs; un-FLAG §B.1).
+- [x] **I2. `is_os` derivation + forwarding** — DONE. New FDI `lp_is_os` input drives
+  the block is_os at ingress (framer → OS/data sync header); the deframer-recovered
+  bit is forwarded on a new `pl_is_os` FDI RX output. Existing all-data stimulus ties
+  `lp_is_os=0` so the round-trip is byte-identical; `make is-os` drives interleaved
+  OS/data and checks the recovered flit-type per flit. Un-FLAGGED §B.1. (B2B seam
+  is_os wiring tied 0 for now — a noted follow-up when OS flits traverse B2B.)
 - [ ] **I3. `pl_flit_cancel` semantics** (`ucie2_fdi_egress.sv`; un-FLAG §B).
 - [ ] **I4. Management/sideband register mapping** to UCIe 2.0
   (`pipe7_regfile.sv`, `pipe7_msgbus_master.sv`; un-FLAG §F).

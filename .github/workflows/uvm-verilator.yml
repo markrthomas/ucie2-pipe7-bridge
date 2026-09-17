@@ -75,6 +75,9 @@ jobs:
       - name: FDI link-FSM control-plane test (Phase I I1)
         run: make link-fsm
 
+      - name: is_os flit-type round-trip test (Phase I I2)
+        run: make is-os
+
       - name: Cycle-accurate cross-check (PyUVM trace == UVM trace)
         run: make trace-compare
 

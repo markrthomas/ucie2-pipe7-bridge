@@ -18,19 +18,21 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   metrics/dashboard, waves, CI, Railway + Codespaces remote runners.
 - `make uvm` is the single canonical SV UVM gate (CI + the container run it); you
   can offload it from a laptop with `make uvm-remote [RUNNER=railway|codespace]`.
-- **Phase I in progress. I1 DONE** (FDI link FSM enriched — real RETRAIN training +
-  full managed state set; `fdi_state_e` encoding pinned/un-FLAGGED; new control test
-  `make link-fsm`; round-trip byte-identical, verified locally: lint/pyuvm/link-fsm/
-  lint-uvm all green; full `make uvm`+trace-compare confirmed by CI). **I2 is next.**
+- **Phase I in progress. I1 + I2 DONE.** I1: FDI link FSM enriched (RETRAIN + managed
+  states, encoding pinned, `make link-fsm`). I2: FDI `lp_is_os` input + `pl_is_os`
+  output forward the flit-type (framer/deframer already handled it); round-trip
+  byte-identical (all-data ties `lp_is_os=0`), `make is-os` exercises OS/data.
+  Verified locally each time (lint/pyuvm/link-fsm/is-os/lint-uvm/b2b/formal);
+  full `make uvm`+trace-compare confirmed by CI. **I5 is next.**
 
 ## Work queue (tick as you go; ▶ = do next)
 
 Detail for each is in `docs/phase_i_design_completion.md`.
 
 - [x] **I9. Housekeeping** — sync PLAN/README status (landed with the plan PR).
-- [x] **I1. FDI link-state FSM + `fdi_state_e` encoding** — done (see above).
-- [ ] ▶ **I2. `is_os` derivation + forwarding.**
-- [ ] **I5. Active error-injection DV** (RX-inject harness; pairs with I1/I2).
+- [x] **I1. FDI link-state FSM + `fdi_state_e` encoding** — done.
+- [x] **I2. `is_os` derivation + forwarding** — done (`make is-os`; §B.1 un-FLAGGED).
+- [ ] ▶ **I5. Active error-injection DV** (RX-inject harness; pairs with I1/I2).
 - [ ] **I6. Gen6 PAM4 end-to-end + Gen5↔Gen6 rate switch.**
 - [ ] **I3. `pl_flit_cancel` semantics.**
 - [ ] **I4. Management/sideband register mapping (UCIe 2.0).**

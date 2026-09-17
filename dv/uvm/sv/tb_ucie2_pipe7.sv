@@ -42,9 +42,10 @@ module tb_ucie2_pipe7;
     .lclk(lclk), .lclk_rst_n(lclk_rst_n), .pclk(pclk), .pclk_rst_n(pclk_rst_n),
     // FDI TX
     .lp_data(vif.lp_data), .lp_valid(vif.lp_valid), .lp_irdy(vif.lp_irdy),
-    .pl_trdy(vif.pl_trdy),
+    .lp_is_os(vif.lp_is_os), .pl_trdy(vif.pl_trdy),
     // FDI RX
-    .pl_data(vif.pl_data), .pl_valid(vif.pl_valid), .pl_flit_cancel(vif.pl_flit_cancel),
+    .pl_data(vif.pl_data), .pl_valid(vif.pl_valid), .pl_is_os(vif.pl_is_os),
+    .pl_flit_cancel(vif.pl_flit_cancel),
     // FDI state machine
     .lp_state_req(vif.lp_state_req), .pl_state_sts(vif.pl_state_sts),
     .lp_linkerror(vif.lp_linkerror), .pl_stallreq(vif.pl_stallreq),

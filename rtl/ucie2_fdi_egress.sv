@@ -17,12 +17,14 @@ module ucie2_fdi_egress
   // ---- Block payload input (from the RX CDC), lclk domain ----
   input  wire              blk_valid,
   input  wire [BLK-1:0]    blk_data,
+  input  wire              blk_is_os,     // recovered flit-type (deframer sync header)
   output wire              blk_ready,
   input  wire              link_active,   // from ucie2_fdi_link_fsm
 
   // ---- FDI receive (bridge -> Protocol Layer) ----
   output wire [FDI_W-1:0]  pl_data,
   output wire              pl_valid,
+  output wire              pl_is_os,      // recovered flit-type, valid with pl_valid
   output wire              pl_flit_cancel
 );
   // No backpressure on FDI RX: always ready to drain a recovered block while the
@@ -31,6 +33,8 @@ module ucie2_fdi_egress
   assign pl_valid  = blk_valid & link_active;
   // FDI_W == BLK (128); zero-extend defensively if a wider FDI is ever configured.
   assign pl_data   = FDI_W'(blk_data);
+  // Forward the recovered flit-type to FDI RX (Phase I I2; crosscheck B resolved).
+  assign pl_is_os  = blk_is_os;
   // FLAGGED (crosscheck B): pl_flit_cancel (adapter flit retraction) not modeled.
   assign pl_flit_cancel = 1'b0;
 

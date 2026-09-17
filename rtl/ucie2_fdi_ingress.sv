@@ -19,6 +19,7 @@ module ucie2_fdi_ingress
   input  wire [FDI_W-1:0]  lp_data,
   input  wire              lp_valid,
   input  wire              lp_irdy,
+  input  wire              lp_is_os,      // flit-type: 1 = ordered-set block, 0 = data
   output wire              pl_trdy,
   input  wire              link_active,   // from ucie2_fdi_link_fsm
 
@@ -33,9 +34,10 @@ module ucie2_fdi_ingress
   assign pl_trdy   = blk_ready & link_active;
   assign blk_valid = lp_valid & lp_irdy & pl_trdy;
   assign blk_data  = lp_data[BLK-1:0];
-  // FLAGGED (crosscheck B.1): is_os derivation from FDI flit type is deferred;
-  // default every block to a data block until the flit-type hook is added.
-  assign blk_is_os = 1'b0;
+  // is_os derived from the FDI flit-type input (Phase I I2; crosscheck B.1 resolved).
+  // One FDI transfer == one block, so the flit-type qualifier maps 1:1 onto the
+  // block's is_os bit; the framer turns it into the OS vs data sync header.
+  assign blk_is_os = lp_is_os;
 
 endmodule : ucie2_fdi_ingress
 

@@ -48,9 +48,11 @@ and the D2D-adapter deep-dive; state encodings and flit-type mapping are FLAGGED
 | `lp_data`      | in  | `FDI_DW` | flit/stream payload word | confirmed (`lpData.bits = 8×width`) |
 | `lp_valid`     | in  | 1 | `lp_data` valid | confirmed |
 | `lp_irdy`      | in  | 1 | protocol layer ready to transfer | confirmed |
+| `lp_is_os`     | in  | 1 | TX flit-type: 1 = ordered-set block, 0 = data | added Phase I I2 (§B.1) |
 | `pl_trdy`      | out | 1 | adapter ready to accept a transfer | confirmed |
 | `pl_data`      | out | `FDI_DW` | received flit/stream payload | confirmed |
 | `pl_valid`     | out | 1 | `pl_data` valid (RX has **no** backpressure) | confirmed |
+| `pl_is_os`     | out | 1 | recovered RX flit-type, valid with `pl_valid` | added Phase I I2 (§B.1) |
 | `pl_flit_cancel`| out | 1 | adapter retracts a flit in flight | confirmed name; **FLAGGED** semantics/handling deferred |
 | `lp_state_req` | in  | 4 | requested link state (`fdi_state_e`) | confirmed signal; **FLAGGED** encoding |
 | `pl_state_sts` | out | 4 | current link state (`fdi_state_e`) | confirmed signal; **FLAGGED** encoding |
@@ -75,10 +77,14 @@ channel is **out of scope for Item 0** and not brought to the boundary.
   128-bit block** `{is_os, data128}` — the contract every downstream block already
   speaks (predecessor `pipe7_rdi_ingress`→framer). This is the "most logical path."
 - **`FDI_FLIT_BYTES = 256`** (standard UCIe flit) ⇒ 16 transfers/flit at 128b.
-- **`is_os` derivation is FLAGGED:** how ordered-set vs data blocks are indicated
-  at the FDI flit level (vs generated adapter-side) is not publicly pinned; the FDI
-  front-end (Phase B) will derive `is_os` from a flit-type indicator, defaulting to
-  data blocks. Recorded here so no packing assumption is silent.
+- **`is_os` derivation — RESOLVED (Phase I I2):** the bridge takes a per-transfer
+  FDI flit-type input `lp_is_os` (1 = ordered-set block, 0 = data), maps it 1:1 onto
+  the block's `is_os` bit at ingress, and the framer turns it into the OS vs data
+  sync header. On RX the deframer recovers the bit from the sync header and the
+  bridge forwards it on a new FDI RX output `pl_is_os` (valid with `pl_valid`).
+  Existing all-data stimulus drives `lp_is_os = 0`, so the round-trip is unchanged;
+  `make is-os` drives interleaved OS/data and checks the recovered flit-type per
+  flit. (The specific FDI-level indicator remains an implementation choice.)
 
 ## C. FDI link states — `fdi_state_e` (encoding RESOLVED, Phase I I1)
 
@@ -155,7 +161,8 @@ header (1b/1b wide data); PAM4 precoding is PHY-side; MAC's only knob is
 1. ~~`fdi_state_e` numeric encodings (§C).~~ **RESOLVED (Phase I I1)** — pinned as an
    implementation-defined stable encoding; LPIF leaves the wire encoding to the
    implementation. See §C.
-2. `is_os` derivation from FDI flit type (§B.1). *(Phase I I2)*
+2. ~~`is_os` derivation from FDI flit type (§B.1).~~ **RESOLVED (Phase I I2)** — FDI
+   `lp_is_os` input drives it at ingress; recovered bit forwarded on `pl_is_os`. See §B.1.
 3. `pl_flit_cancel` semantics/handling (§B). *(Phase I I3)*
 4. Register file ↔ UCIe 2.0 management/sideband transport mapping (§F). *(Phase I I4)*
 

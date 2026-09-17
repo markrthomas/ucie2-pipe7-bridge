@@ -87,7 +87,7 @@ class FcovTest(uvm_test):
 
     # ---- init / harness ----
     def _init(self, dut):
-        for n in ("lp_data", "lp_valid", "lp_irdy", "lp_state_req", "lp_linkerror",
+        for n in ("lp_data", "lp_valid", "lp_irdy", "lp_is_os", "lp_state_req", "lp_linkerror",
                   "lp_stallack", "lp_rx_active_req", "lp_clk_ack", "lp_wake_req",
                   "req_valid", "req_kind", "req_power_down", "mb_req_valid",
                   "mb_req_write", "mb_req_committed", "mb_req_addr", "mb_req_wdata",
