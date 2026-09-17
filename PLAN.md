@@ -449,9 +449,14 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
 - [ ] **I3. `pl_flit_cancel` semantics** (`ucie2_fdi_egress.sv`; un-FLAG §B).
 - [ ] **I4. Management/sideband register mapping** to UCIe 2.0
   (`pipe7_regfile.sv`, `pipe7_msgbus_master.sv`; un-FLAG §F).
-- [ ] **I5. Active error-injection DV** — RX-inject harness + directed error/
-  recovery tests (rx_overflow, deframer loss-of-lock, FIFO overflow, backpressure).
-  Closes the item-12 RX-inject FLAG + G21+ error paths.
+- [x] **I5. Active error-injection DV** — DONE (core). New `dv/pyuvm/test_err_inject.py`
+  (`make err-inject`) drives the PIPE RX legal → corrupt (illegal sync headers) →
+  legal and proves the deframer raises `sync_error`, drops `block_locked`, then
+  **re-locks with the flits intact** (the loss-of-lock-AND-recovery path the round-trip
+  only asserts never fires). Closes the item-12 RX-inject FLAG + the G21+ error path.
+  Remainder folded into later work: active `rx_overflow`/backpressure-saturation
+  injection needs a producer/consumer rate mismatch, natural to add with I6 (Gen6
+  wide datapath / rate switch).
 - [ ] **I6. Gen6 PAM4 end-to-end** round-trip in both TBs + Gen5↔Gen6 rate switch.
 - [ ] **I7. Constrained-random expansion + functional-coverage closure** (rest of
   G21+).
