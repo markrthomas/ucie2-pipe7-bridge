@@ -80,12 +80,22 @@ channel is **out of scope for Item 0** and not brought to the boundary.
   front-end (Phase B) will derive `is_os` from a flit-type indicator, defaulting to
   data blocks. Recorded here so no packing assumption is silent.
 
-## C. FDI link states — `fdi_state_e` (FLAGGED encoding)
+## C. FDI link states — `fdi_state_e` (encoding RESOLVED, Phase I I1)
 
-LPIF/FDI-style states; the 4-bit numeric encodings are **FLAGGED** (implementation
-choice — the state *set* is spec-aligned, the values are ours):
+LPIF/FDI-style states. The state *set* is spec-aligned:
 
 `RESET`, `ACTIVE`, `L1`, `L2`, `LINKRESET`, `LINKERROR`, `RETRAIN`, `DISABLED`.
+
+LPIF defines the state set but leaves the wire **encoding** to the implementation,
+so the 4-bit values in `ucie2_pipe7_pkg.sv` are **pinned as an implementation-
+defined, stable (ABI) encoding** (`RESET=0, ACTIVE=1, L1=2, L2=3, LINKRESET=4,
+LINKERROR=5, RETRAIN=6, DISABLED=7`): `RESET=0` so a reset lands in it, `ACTIVE=1`,
+low-power next, management/error last. No longer FLAGGED — decided and documented.
+The FSM (`ucie2_fdi_link_fsm`) implements bring-up (fast RESET→ACTIVE), a real
+multi-cycle **RETRAIN** (auto-returns to ACTIVE), the low-power / LINKRESET /
+DISABLED managed states, and sticky LINKERROR with request-driven recovery,
+verified by `dv/pyuvm/test_link_fsm.py` (`make link-fsm`). A cold multi-phase
+training bring-up remains a documented future increment.
 
 ## D. PowerDown / Rate / Width (PIPE 7.1 — reused, spec-cited)
 
@@ -138,14 +148,16 @@ header (1b/1b wide data); PAM4 precoding is PHY-side; MAC's only knob is
 | 0.3 | PIPE geometry | widths 10/20/40/80/160; shell `PIPE_WIDTH` default 80 | §D/§E (Ref 643108) |
 | 0.4 | `rate_e` Gen5/Gen6 | 4 / 5 | §D (Ref 643108) |
 | 0.5 | `powerdown_e` | P0..P2 = 0..3 | §D (Ref 643108) |
-| 0.6 | `fdi_state_e` | 8-state set; encoding FLAGGED | §C |
+| 0.6 | `fdi_state_e` | 8-state set; encoding pinned (impl-defined, Phase I I1) | §C |
 | 0.7 | register map | msgbus loop; UCIe-2.0 mgmt mapping FLAGGED | §F |
 
 ## FLAGGED items (implemented, not spec-confirmed — revisit)
-1. `fdi_state_e` numeric encodings (§C).
-2. `is_os` derivation from FDI flit type (§B.1).
-3. `pl_flit_cancel` semantics/handling (§B).
-4. Register file ↔ UCIe 2.0 management/sideband transport mapping (§F).
+1. ~~`fdi_state_e` numeric encodings (§C).~~ **RESOLVED (Phase I I1)** — pinned as an
+   implementation-defined stable encoding; LPIF leaves the wire encoding to the
+   implementation. See §C.
+2. `is_os` derivation from FDI flit type (§B.1). *(Phase I I2)*
+3. `pl_flit_cancel` semantics/handling (§B). *(Phase I I3)*
+4. Register file ↔ UCIe 2.0 management/sideband transport mapping (§F). *(Phase I I4)*
 
 ## Sign-off
 - [x] All rows resolved; `rtl/ucie2_pipe7_pkg.sv` updated; encodings **frozen**;

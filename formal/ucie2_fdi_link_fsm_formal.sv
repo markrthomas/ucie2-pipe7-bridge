@@ -21,11 +21,13 @@
 //   L2  link_active is exactly (pl_state_sts == FDI_ACTIVE) -- the datapath gate
 //       can never open outside FDI_ACTIVE.
 //   L3  HANDSHAKE: pl_state_sts only changes out of a cycle that either raised
-//       lp_linkerror, or completed the stall handshake (pl_stallreq & lp_stallack).
+//       lp_linkerror, completed the stall handshake (pl_stallreq & lp_stallack), or
+//       is RETRAIN training completing its auto-return to ACTIVE (Phase I I1).
 //   L4  lp_linkerror forces FDI_LINKERROR on the next cycle, with pl_stallreq low.
 //   L5  pl_stallreq only rises when a *different* state was actually requested.
 //   L6  pl_rx_active_sts / pl_wake_ack are exact 1-cycle mirrors of their requests.
-//   L7  pl_clk_req is exactly the registered (FDI_ACTIVE || pl_stallreq).
+//   L7  pl_clk_req is exactly the registered (FDI_ACTIVE || FDI_RETRAIN ||
+//       pl_stallreq) -- the clock stays requested while training (Phase I I1).
 // -----------------------------------------------------------------------------
 module ucie2_fdi_link_fsm_formal (
     input logic       clk,
@@ -80,7 +82,8 @@ module ucie2_fdi_link_fsm_formal (
         linkerror_q <= lp_linkerror;
         rxreq_q     <= lp_rx_active_req;
         wakereq_q   <= lp_wake_req;
-        active_q    <= (pl_state_sts == ucie2_pipe7_pkg::FDI_ACTIVE) || pl_stallreq;
+        active_q    <= (pl_state_sts == ucie2_pipe7_pkg::FDI_ACTIVE)
+                       || (pl_state_sts == ucie2_pipe7_pkg::FDI_RETRAIN) || pl_stallreq;
     end
 
     always_ff @(posedge clk) begin
@@ -96,8 +99,11 @@ module ucie2_fdi_link_fsm_formal (
         end
 
         if (past_valid) begin
-            // L3 -- state only moves via link error or a completed stall handshake.
-            assert ((pl_state_sts == sts_q) || linkerror_q || (stallreq_q && stallack_q));
+            // L3 -- state only moves via link error, a completed stall handshake, or
+            // RETRAIN training completing (RETRAIN -> ACTIVE auto-return, Phase I I1).
+            assert ((pl_state_sts == sts_q) || linkerror_q || (stallreq_q && stallack_q)
+                    || ((sts_q == ucie2_pipe7_pkg::FDI_RETRAIN)
+                        && (pl_state_sts == ucie2_pipe7_pkg::FDI_ACTIVE)));
 
             // L4 -- a link error forces LINKERROR and drops the stall request.
             assert (!linkerror_q || (pl_state_sts == ucie2_pipe7_pkg::FDI_LINKERROR));
