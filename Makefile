@@ -94,7 +94,7 @@ else
   SEED_RESOLVED := $(SEED)
 endif
 
-.PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
+.PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os err-inject b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
         lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
@@ -124,6 +124,7 @@ help:
 	@echo "  make fcov          functional coverage (cocotb_coverage)        [local]"
 	@echo "  make link-fsm      FDI link-FSM control test (bring-up/retrain) [local]"
 	@echo "  make is-os         ordered-set/data flit-type round-trip test   [local]"
+	@echo "  make err-inject    RX error-injection: sync_error + re-lock      [local]"
 	@echo "  make b2b           back-to-back two-bridge configs (PyUVM)       [local]"
 	@echo "                     (b2b-ucie: UCIe==PCIe link==UCIe; b2b-pcie: PCIe==UCIe"
 	@echo "                      link==PCIe. Two ucie2_pipe7_bridge joined by a"
@@ -267,6 +268,14 @@ link-fsm:
 # test (own top module, no bridge.trace) — independent of the cross-check.
 is-os:
 	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_is_os
+
+# ---- RX error-injection + recovery test (Phase I I5) ------------------------
+# Drives the PIPE RX with legal -> corrupt (illegal sync headers) -> legal streams
+# and checks the deframer raises sync_error + drops lock, then RE-LOCKS with the
+# flits intact (the recovery path the round-trip only asserts never happens).
+# Directed data-plane test (own top module, no bridge.trace).
+err-inject:
+	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_err_inject
 
 # ---- Back-to-back (B2B) two-bridge configs (PyUVM tier) ---------------------
 # Two ucie2_pipe7_bridge instances wired together by a dv/harness wrapper top,
