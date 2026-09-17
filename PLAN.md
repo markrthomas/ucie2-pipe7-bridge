@@ -457,7 +457,14 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
   Remainder folded into later work: active `rx_overflow`/backpressure-saturation
   injection needs a producer/consumer rate mismatch, natural to add with I6 (Gen6
   wide datapath / rate switch).
-- [ ] **I6. Gen6 PAM4 end-to-end** round-trip in both TBs + Gen5↔Gen6 rate switch.
+- [x] **I6. Gen6 PAM4 end-to-end** — DONE. The bridge routes the FDI TX block into
+  the Gen6 raw wide datapath (previously the `g6_pl_*` TX input was tied off), gated
+  by rate so the Gen5 default stays byte-identical. New `dv/pyuvm/test_gen6.py`
+  (`make gen6`, built at the wide `PW=160` via `-GPW`) switches Rate to Gen6 through
+  the mac_ctrl_fsm PhyStatus handshake and round-trips flits through the raw path —
+  covering **both** Gen6 end-to-end and the live **Gen5→Gen6 rate switch**. (Active
+  `rx_overflow`/backpressure injection still needs a pclk/lclk rate mismatch not
+  present here — carried into I7.)
 - [ ] **I7. Constrained-random expansion + functional-coverage closure** (rest of
   G21+).
 - [ ] **I8. H3b** — full-duplex SV UVM tier + credit-based FDI seam + B2B

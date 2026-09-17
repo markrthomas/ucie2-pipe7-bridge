@@ -46,6 +46,12 @@ ifeq ($(SIM),icarus)
     COMPILE_ARGS += -g2012
 endif
 
+# Optional top-parameter override, e.g. PW=160 to build the bridge at the wide
+# Gen6 PIPE width for the Gen6 round-trip test (Verilator -G<param>=<value>).
+ifneq ($(PW),)
+    COMPILE_ARGS += -GPW=$(PW)
+endif
+
 # ---- Line-coverage build (Phase F increment 2) ------------------------------
 # INERT unless RTL_COVERAGE=1, so `make pyuvm`/`make fcov` build exactly as before.
 # (NOT named COVERAGE: make exports command-line variables, and cocotb 2.x reads

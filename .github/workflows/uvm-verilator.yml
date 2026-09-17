@@ -81,6 +81,9 @@ jobs:
       - name: RX error-injection + recovery test (Phase I I5)
         run: make err-inject
 
+      - name: Gen6 end-to-end + rate-switch test (Phase I I6)
+        run: make gen6
+
       - name: Cycle-accurate cross-check (PyUVM trace == UVM trace)
         run: make trace-compare
 

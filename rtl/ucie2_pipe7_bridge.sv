@@ -194,7 +194,12 @@ module ucie2_pipe7_bridge
   wire        data_enable = txc_rd_valid;
   wire [1:0]  g5_pl_acc;
   wire [1:0]  g5_pl_cnt = txc_rd_valid ? 2'd1 : 2'd0;
-  assign txc_rd_ready = |g5_pl_acc;
+  // TX CDC read: the Gen5 gearbox drains via its framer accept; the Gen6 raw path
+  // (I6) drains one block/PCLK when its datapath accepts. Muxed by rate so the
+  // Gen5 default is byte-identical (tx_is_gen6 is 0 -> |g5_pl_acc, unchanged).
+  wire        tx_is_gen6 = (rate == RATE_GEN6);
+  wire        g6_pl_ready;
+  assign txc_rd_ready = tx_is_gen6 ? (txc_rd_valid & g6_pl_ready) : |g5_pl_acc;
 
   wire [1:0]               g5_rx_cnt;
   wire [BLOCK_PAYLOAD-1:0] g5_rx_data0, g5_rx_data1;
@@ -202,7 +207,6 @@ module ucie2_pipe7_bridge
   wire                     g6_rx_valid;
   wire [PW-1:0]            g6_rx_data;
   /* verilator lint_off UNUSEDSIGNAL */
-  wire                     g6_pl_ready_nc;
   wire [MB_DATA_WIDTH-1:0] pam4_cfg_nc;
   /* verilator lint_on UNUSEDSIGNAL */
 
@@ -220,7 +224,7 @@ module ucie2_pipe7_bridge
     .rate, .power_down, .data_enable, .pam4_restricted_levels(pam4_levels),
     .g5_pl_cnt, .g5_pl_data0(txc_rd_data[BLOCK_PAYLOAD-1:0]), .g5_pl_is_os0(txc_rd_data[BLOCK_PAYLOAD]),
     .g5_pl_data1('0), .g5_pl_is_os1(1'b0), .g5_pl_acc,
-    .g6_pl_valid(1'b0), .g6_pl_data('0), .g6_pl_ready(g6_pl_ready_nc),
+    .g6_pl_valid(txc_rd_valid), .g6_pl_data(PW'(txc_rd_data[BLOCK_PAYLOAD-1:0])), .g6_pl_ready(g6_pl_ready),
     .tx_data, .tx_data_valid, .tx_elec_idle(dp_tx_elec_idle),
     .rx_data, .rx_valid,
     .g5_rx_cnt, .g5_rx_data0, .g5_rx_os0, .g5_rx_data1, .g5_rx_os1,
