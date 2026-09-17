@@ -18,13 +18,14 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   metrics/dashboard, waves, CI, Railway + Codespaces remote runners.
 - `make uvm` is the single canonical SV UVM gate (CI + the container run it); you
   can offload it from a laptop with `make uvm-remote [RUNNER=railway|codespace]`.
-- **Phase I in progress. I1 + I2 + I5 DONE.** I1: FDI link FSM enriched (RETRAIN +
+- **Phase I in progress. I1 + I2 + I5 + I6 DONE.** I1: FDI link FSM (RETRAIN +
   managed states, encoding pinned, `make link-fsm`). I2: FDI `lp_is_os`/`pl_is_os`
-  forward the flit-type, round-trip byte-identical, `make is-os`. I5 (core): RX
-  error-injection `make err-inject` — deframer sync_error + loss-of-lock + re-lock
-  with flits intact (`rx_overflow`/backpressure active-injection deferred into I6).
-  Each verified locally (lint/pyuvm/link-fsm/is-os/err-inject/lint-uvm/b2b/formal);
-  full `make uvm`+trace-compare confirmed by CI. **I6 is next.**
+  flit-type, `make is-os`. I5 (core): RX error-injection `make err-inject` (sync_error
+  + loss-of-lock + re-lock). I6: Gen6 end-to-end + Gen5→Gen6 rate switch `make gen6`
+  (bridge routes the FDI block into the Gen6 raw path, gated by rate; built at PW=160).
+  Each byte-identical in Gen5, verified locally (lint/pyuvm/link-fsm/is-os/err-inject/
+  gen6/lint-uvm/b2b/formal); full `make uvm`+trace-compare confirmed by CI.
+  **I3 is next** (the two remaining FLAGGED items I3/I4, then I7/I8).
 
 ## Work queue (tick as you go; ▶ = do next)
 
@@ -34,9 +35,12 @@ Detail for each is in `docs/phase_i_design_completion.md`.
 - [x] **I1. FDI link-state FSM + `fdi_state_e` encoding** — done.
 - [x] **I2. `is_os` derivation + forwarding** — done (`make is-os`; §B.1 un-FLAGGED).
 - [x] **I5. Active error-injection DV (core)** — done (`make err-inject`; sync_error +
-  loss-of-lock + re-lock). `rx_overflow`/backpressure active-injection deferred → I6.
-- [ ] ▶ **I6. Gen6 PAM4 end-to-end** + Gen5↔Gen6 rate switch (+ the deferred
-  rx_overflow/backpressure injection, natural with the rate mismatch).
+  loss-of-lock + re-lock). `rx_overflow`/backpressure active-injection deferred → I7.
+- [x] **I6. Gen6 PAM4 end-to-end + Gen5→Gen6 rate switch** — done (`make gen6`, PW=160).
+- [ ] ▶ **I3. `pl_flit_cancel` semantics** (`ucie2_fdi_egress.sv`; un-FLAG §B).
+- [ ] **I4. Management/sideband register mapping** (un-FLAG §F).
+- [ ] **I7. Constrained-random + coverage closure** (+ deferred rx_overflow/backpressure).
+- [ ] **I8. H3b** — full-duplex SV UVM + credit FDI seam + B2B trace gate.
 - [ ] **I6. Gen6 PAM4 end-to-end + Gen5↔Gen6 rate switch.**
 - [ ] **I3. `pl_flit_cancel` semantics.**
 - [ ] **I4. Management/sideband register mapping (UCIe 2.0).**

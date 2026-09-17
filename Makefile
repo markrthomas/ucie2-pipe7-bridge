@@ -94,7 +94,7 @@ else
   SEED_RESOLVED := $(SEED)
 endif
 
-.PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os err-inject b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
+.PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os err-inject gen6 b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
         lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
@@ -125,6 +125,7 @@ help:
 	@echo "  make link-fsm      FDI link-FSM control test (bring-up/retrain) [local]"
 	@echo "  make is-os         ordered-set/data flit-type round-trip test   [local]"
 	@echo "  make err-inject    RX error-injection: sync_error + re-lock      [local]"
+	@echo "  make gen6          Gen6 end-to-end round-trip (PW=160, rate sw)  [local]"
 	@echo "  make b2b           back-to-back two-bridge configs (PyUVM)       [local]"
 	@echo "                     (b2b-ucie: UCIe==PCIe link==UCIe; b2b-pcie: PCIe==UCIe"
 	@echo "                      link==PCIe. Two ucie2_pipe7_bridge joined by a"
@@ -276,6 +277,15 @@ is-os:
 # Directed data-plane test (own top module, no bridge.trace).
 err-inject:
 	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_err_inject
+
+# ---- Gen6 end-to-end round-trip (Phase I I6) --------------------------------
+# Builds the bridge at the wide Gen6 PIPE width (PW=160), switches Rate to Gen6 via
+# the mac_ctrl_fsm handshake, and round-trips flits through the raw wide datapath
+# (no framer/deframer). Own top module + its own SIM_BUILD (PW=160 differs from the
+# PW=80 gate build), no bridge.trace — independent of the Gen5 cross-check.
+gen6:
+	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_gen6 PW=160 \
+	  SIM_BUILD=$(abspath dv/pyuvm/gen6_build)
 
 # ---- Back-to-back (B2B) two-bridge configs (PyUVM tier) ---------------------
 # Two ucie2_pipe7_bridge instances wired together by a dv/harness wrapper top,
