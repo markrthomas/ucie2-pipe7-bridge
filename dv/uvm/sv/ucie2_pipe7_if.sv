@@ -20,10 +20,12 @@ interface ucie2_pipe7_if #(
   logic [FDI_W-1:0] lp_data       = '0;
   logic             lp_valid       = 1'b0;
   logic             lp_irdy        = 1'b0;
+  logic             lp_is_os       = 1'b0;   // flit-type (I2); default data -> round-trip byte-identical
   logic             pl_trdy;
   // FDI receive (bridge -> Protocol Layer)
   logic [FDI_W-1:0] pl_data;
   logic             pl_valid;
+  logic             pl_is_os;
   logic             pl_flit_cancel;
   // FDI link state machine
   // lp_state_req MUST be initialised to FDI_RESET (0): if it is x at reset

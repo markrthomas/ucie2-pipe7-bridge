@@ -56,8 +56,9 @@ package ucie2_pipe7_pkg;
   parameter logic [1:0]  SYNC_HDR_DATA = 2'b10;   // Data block
   parameter logic [1:0]  SYNC_HDR_OS   = 2'b01;   // Ordered-Set block
   /* verilator lint_on UNUSEDPARAM */
-  // FLAGGED: is_os derivation from FDI flit type deferred to the front-end
-  //          (crosscheck B.1) — defaults to data blocks until then.
+  // is_os is derived from the FDI flit-type input (lp_is_os) at ingress and the
+  // recovered bit is forwarded to FDI RX (pl_is_os) — Phase I I2; crosscheck B.1
+  // resolved. The framer maps it to the OS vs data sync header.
 
   // ===========================================================================
   // PIPE 7.1 MAC-facing (SerDes architecture, PCIe Gen5+Gen6) — reused, spec-cited

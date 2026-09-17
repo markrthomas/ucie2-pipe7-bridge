@@ -66,10 +66,12 @@ module b2b_ucie_pcie_ucie
     .lp_data          (a_lp_data),
     .lp_valid         (a_lp_valid),
     .lp_irdy          (a_lp_irdy),
+    .lp_is_os         (1'b0),
     .pl_trdy          (a_pl_trdy),
     // FDI RX (unused on A)
     .pl_data          (),
     .pl_valid         (),
+    .pl_is_os         (),
     .pl_flit_cancel   (),
     // FDI link (external left, TB-controlled)
     .lp_state_req     (a_lp_state_req),
@@ -135,10 +137,12 @@ module b2b_ucie_pcie_ucie
     .lp_data          ('0),
     .lp_valid         (1'b0),
     .lp_irdy          (1'b0),
+    .lp_is_os         (1'b0),
     .pl_trdy          (),
     // FDI RX (external right)
     .pl_data          (b_pl_data),
     .pl_valid         (b_pl_valid),
+    .pl_is_os         (),
     .pl_flit_cancel   (b_pl_flit_cancel),
     // FDI link: self-bring-up to ACTIVE (state_req=ACTIVE, stallack=stallreq)
     .lp_state_req     (FDI_ACTIVE),

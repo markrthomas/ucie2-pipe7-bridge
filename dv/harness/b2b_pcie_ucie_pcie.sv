@@ -59,10 +59,12 @@ module b2b_pcie_ucie_pcie
     .lp_data          ('0),
     .lp_valid         (1'b0),
     .lp_irdy          (1'b0),
+    .lp_is_os         (1'b0),
     .pl_trdy          (),
     // FDI RX (to seam)
     .pl_data          (seam_pl_data),
     .pl_valid         (seam_pl_valid),
+    .pl_is_os         (),
     .pl_flit_cancel   (),
     // FDI link: self-bring-up to ACTIVE
     .lp_state_req     (FDI_ACTIVE),
@@ -128,10 +130,12 @@ module b2b_pcie_ucie_pcie
     .lp_data          (seam_pl_data),
     .lp_valid         (seam_pl_valid),
     .lp_irdy          (1'b1),
+    .lp_is_os         (1'b0),   // seam is_os not exercised here (all-data stimulus)
     .pl_trdy          (),
     // FDI RX (unused on B)
     .pl_data          (),
     .pl_valid         (),
+    .pl_is_os         (),
     .pl_flit_cancel   (),
     // FDI link: self-bring-up to ACTIVE
     .lp_state_req     (FDI_ACTIVE),

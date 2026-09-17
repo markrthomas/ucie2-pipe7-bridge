@@ -36,7 +36,7 @@ async def smoke(dut):
     dut.pclk_rst_n.value = 0
     dut.lclk_rst_n.value = 0
     # Tie inputs to a defined idle so the bridge simulates deterministically.
-    for name in ("lp_data", "lp_valid", "lp_irdy", "lp_state_req",
+    for name in ("lp_data", "lp_valid", "lp_irdy", "lp_is_os", "lp_state_req",
                  "lp_linkerror", "lp_stallack", "lp_rx_active_req", "lp_clk_ack",
                  "lp_wake_req", "req_valid", "req_kind", "req_power_down",
                  "req_rate", "req_width", "req_rxwidth", "mb_req_valid",

@@ -35,11 +35,13 @@ module ucie2_pipe7_bridge
   input  wire [FDI_W-1:0]        lp_data,
   input  wire                    lp_valid,
   input  wire                    lp_irdy,
+  input  wire                    lp_is_os,      // flit-type (1=ordered-set, 0=data)
   output wire                    pl_trdy,
 
   // ---- FDI: receive (bridge -> Protocol Layer) ------------------------------
   output wire [FDI_W-1:0]        pl_data,
   output wire                    pl_valid,
+  output wire                    pl_is_os,      // recovered flit-type, valid w/ pl_valid
   output wire                    pl_flit_cancel,
 
   // ---- FDI: link state machine ----------------------------------------------
@@ -169,7 +171,7 @@ module ucie2_pipe7_bridge
   wire                     ig_blk_valid, ig_blk_is_os, ig_blk_ready;
   wire [BLOCK_PAYLOAD-1:0] ig_blk_data;
   ucie2_fdi_ingress ingress (
-    .lp_data, .lp_valid, .lp_irdy, .pl_trdy, .link_active,
+    .lp_data, .lp_valid, .lp_irdy, .lp_is_os, .pl_trdy, .link_active,
     .blk_valid(ig_blk_valid), .blk_data(ig_blk_data), .blk_is_os(ig_blk_is_os),
     .blk_ready(ig_blk_ready)
   );
@@ -265,8 +267,9 @@ module ucie2_pipe7_bridge
 
   ucie2_fdi_egress egress (
     .blk_valid(rxc_rd_valid), .blk_data(rxc_rd_data[BLOCK_PAYLOAD-1:0]),
+    .blk_is_os(rxc_rd_data[BLOCK_PAYLOAD]),
     .blk_ready(rxc_rd_ready), .link_active(link_active),
-    .pl_data, .pl_valid, .pl_flit_cancel
+    .pl_data, .pl_valid, .pl_is_os, .pl_flit_cancel
   );
 
   // rx_overflow: sticky error flag — set on any burst overflow, cleared only by
@@ -279,10 +282,10 @@ module ucie2_pipe7_bridge
   end
   assign rx_overflow = rx_overflow_q;
 
-  // Intentionally unused: PIPE RxStatus/RxElecIdle (handling is future work) and
-  // the recovered block's is_os bit (not forwarded to FDI RX — FLAGGED, crosscheck B).
+  // Intentionally unused: PIPE RxStatus/RxElecIdle (handling is future work).
+  // The recovered block's is_os bit is now forwarded to FDI RX via pl_is_os (I2).
   /* verilator lint_off UNUSEDSIGNAL */
-  wire _unused = (|rx_status) | rx_elec_idle | rxc_rd_data[BLOCK_PAYLOAD];
+  wire _unused = (|rx_status) | rx_elec_idle;
   /* verilator lint_on UNUSEDSIGNAL */
 
 endmodule : ucie2_pipe7_bridge

@@ -94,7 +94,7 @@ else
   SEED_RESOLVED := $(SEED)
 endif
 
-.PHONY: default help tools tools-check lint pyuvm fcov link-fsm b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
+.PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
         lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
@@ -123,6 +123,7 @@ help:
 	@echo "                     (dv/common/vectors/build/fdi_flits.vec via gen_vectors.py)"
 	@echo "  make fcov          functional coverage (cocotb_coverage)        [local]"
 	@echo "  make link-fsm      FDI link-FSM control test (bring-up/retrain) [local]"
+	@echo "  make is-os         ordered-set/data flit-type round-trip test   [local]"
 	@echo "  make b2b           back-to-back two-bridge configs (PyUVM)       [local]"
 	@echo "                     (b2b-ucie: UCIe==PCIe link==UCIe; b2b-pcie: PCIe==UCIe"
 	@echo "                      link==PCIe. Two ucie2_pipe7_bridge joined by a"
@@ -259,6 +260,13 @@ fcov:
 # independent of the sacred round-trip cross-check. Runs locally + CI.
 link-fsm:
 	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_link_fsm
+
+# ---- is_os round-trip test (Phase I I2) -------------------------------------
+# Drives interleaved ordered-set / data flits and checks payload + recovered
+# flit-type (pl_is_os) per flit through the framer/deframer. Directed data-plane
+# test (own top module, no bridge.trace) — independent of the cross-check.
+is-os:
+	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_is_os
 
 # ---- Back-to-back (B2B) two-bridge configs (PyUVM tier) ---------------------
 # Two ucie2_pipe7_bridge instances wired together by a dv/harness wrapper top,

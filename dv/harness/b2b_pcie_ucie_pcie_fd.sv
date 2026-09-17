@@ -33,8 +33,8 @@ module b2b_pcie_ucie_pcie_fd
 
   ucie2_pipe7_bridge u_a (
     .lclk, .lclk_rst_n, .pclk, .pclk_rst_n,
-    .lp_data(b2a), .lp_valid(b2a_v), .lp_irdy(1'b1), .pl_trdy(),
-    .pl_data(a2b), .pl_valid(a2b_v), .pl_flit_cancel(),
+    .lp_data(b2a), .lp_valid(b2a_v), .lp_irdy(1'b1), .lp_is_os(1'b0), .pl_trdy(),
+    .pl_data(a2b), .pl_valid(a2b_v), .pl_is_os(), .pl_flit_cancel(),
     .lp_state_req(FDI_ACTIVE), .pl_state_sts(),
     .lp_linkerror(1'b0), .pl_stallreq(a_stall), .lp_stallack(a_stall),
     .lp_rx_active_req(1'b0), .pl_rx_active_sts(), .pl_clk_req(), .lp_clk_ack(1'b0),
@@ -54,8 +54,8 @@ module b2b_pcie_ucie_pcie_fd
 
   ucie2_pipe7_bridge u_b (
     .lclk, .lclk_rst_n, .pclk, .pclk_rst_n,
-    .lp_data(a2b), .lp_valid(a2b_v), .lp_irdy(1'b1), .pl_trdy(),
-    .pl_data(b2a), .pl_valid(b2a_v), .pl_flit_cancel(),
+    .lp_data(a2b), .lp_valid(a2b_v), .lp_irdy(1'b1), .lp_is_os(1'b0), .pl_trdy(),
+    .pl_data(b2a), .pl_valid(b2a_v), .pl_is_os(), .pl_flit_cancel(),
     .lp_state_req(FDI_ACTIVE), .pl_state_sts(),
     .lp_linkerror(1'b0), .pl_stallreq(b_stall), .lp_stallack(b_stall),
     .lp_rx_active_req(1'b0), .pl_rx_active_sts(), .pl_clk_req(), .lp_clk_ack(1'b0),
