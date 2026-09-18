@@ -94,7 +94,7 @@ else
   SEED_RESOLVED := $(SEED)
 endif
 
-.PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os err-inject gen6 b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
+.PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os err-inject gen6 flit-cancel b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
         lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
@@ -126,6 +126,7 @@ help:
 	@echo "  make is-os         ordered-set/data flit-type round-trip test   [local]"
 	@echo "  make err-inject    RX error-injection: sync_error + re-lock      [local]"
 	@echo "  make gen6          Gen6 end-to-end round-trip (PW=160, rate sw)  [local]"
+	@echo "  make flit-cancel   pl_flit_cancel: RX-overflow flit retraction    [local]"
 	@echo "  make b2b           back-to-back two-bridge configs (PyUVM)       [local]"
 	@echo "                     (b2b-ucie: UCIe==PCIe link==UCIe; b2b-pcie: PCIe==UCIe"
 	@echo "                      link==PCIe. Two ucie2_pipe7_bridge joined by a"
@@ -285,6 +286,15 @@ err-inject:
 # PW=80 gate build), no bridge.trace — independent of the Gen5 cross-check.
 gen6:
 	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_gen6 PW=160 \
+	  SIM_BUILD=$(abspath dv/pyuvm/gen6_build)
+
+# ---- pl_flit_cancel + RX-overflow test (Phase I I3) -------------------------
+# At the wide PW=160 a 160-bit Gen5 word carries >1 block/PCLK, so a dense injected
+# stream overflows the depth-4 burst FIFO. Checks rx_overflow sets and that flits
+# recovered after the overflow are RETRACTED via pl_flit_cancel (adapter flit
+# cancellation). Own top module + its own SIM_BUILD (PW=160), no bridge.trace.
+flit-cancel:
+	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_flit_cancel PW=160 \
 	  SIM_BUILD=$(abspath dv/pyuvm/gen6_build)
 
 # ---- Back-to-back (B2B) two-bridge configs (PyUVM tier) ---------------------

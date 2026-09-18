@@ -84,6 +84,9 @@ jobs:
       - name: Gen6 end-to-end + rate-switch test (Phase I I6)
         run: make gen6
 
+      - name: pl_flit_cancel + RX-overflow test (Phase I I3)
+        run: make flit-cancel
+
       - name: Cycle-accurate cross-check (PyUVM trace == UVM trace)
         run: make trace-compare
 

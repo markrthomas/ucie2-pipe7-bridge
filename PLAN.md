@@ -446,7 +446,14 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
   `lp_is_os=0` so the round-trip is byte-identical; `make is-os` drives interleaved
   OS/data and checks the recovered flit-type per flit. Un-FLAGGED §B.1. (B2B seam
   is_os wiring tied 0 for now — a noted follow-up when OS flits traverse B2B.)
-- [ ] **I3. `pl_flit_cancel` semantics** (`ucie2_fdi_egress.sv`; un-FLAG §B).
+- [x] **I3. `pl_flit_cancel` semantics** — DONE. Model: the adapter retracts a flit in
+  flight (`pl_flit_cancel` with `pl_valid`) when the recovered block came through an RX
+  datapath error — the RX FIFO overflow is tagged per-block on the RX CDC error channel
+  (`wr_error`→`rd_error`) and surfaced at egress. New `dv/pyuvm/test_flit_cancel.py`
+  (`make flit-cancel`, PW=160) forces a real burst-FIFO overflow with a dense stream and
+  checks `rx_overflow` sets and post-overflow flits are retracted — which ALSO delivers
+  the `rx_overflow` injection deferred from I5/I6. Byte-identical (no overflow → no
+  cancel). Un-FLAGGED §B.
 - [ ] **I4. Management/sideband register mapping** to UCIe 2.0
   (`pipe7_regfile.sv`, `pipe7_msgbus_master.sv`; un-FLAG §F).
 - [x] **I5. Active error-injection DV** — DONE (core). New `dv/pyuvm/test_err_inject.py`
