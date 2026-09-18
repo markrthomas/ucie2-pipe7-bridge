@@ -92,8 +92,9 @@ to attach to.
 Every literal is cited or `// FLAGGED` in `docs/ucie2_pipe71_spec_crosscheck.md`
 (FDI signal list, PIPE 7.1 encodings reused from the predecessor, Gen5 framing,
 msgbus/register map). FDI transfer = 128b, maps 1:1 to the internal `{is_os,data128}`
-block. Four FLAGGED items remain (fdi_state encoding, is_os derivation,
-pl_flit_cancel, UCIe-2.0 management mapping) — revisit, don't silently rely on them.
+block. The four FLAGGED contract items (fdi_state encoding, is_os derivation,
+pl_flit_cancel, UCIe-2.0 management mapping) are all **RESOLVED** in Phase I
+(I1/I2/I3/I4); `ucie2_pipe7_pkg.sv` encodings stay frozen.
 
 ## Local toolchain reality
 

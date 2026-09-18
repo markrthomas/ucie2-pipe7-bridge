@@ -72,16 +72,26 @@ design may silently diverge from UCIe 2.0.
 - **Accept:** a directed cancel test in both tiers shows the flit is dropped
   cleanly with no downstream corruption; trace-compare green.
 
-### I4. Management/sideband register mapping (UCIe 2.0)
-- **Why:** regfile ↔ UCIe-2.0 management/sideband transport mapping is FLAGGED
-  (`rtl/ucie2_pipe7_pkg.sv:132`).
-- **Files:** `rtl/pipe7_regfile.sv`, `rtl/pipe7_msgbus_master.sv`,
-  `rtl/ucie2_pipe7_pkg.sv` (§F register map).
-- **Approach:** map the register file to the UCIe-2.0 management/sideband transport
-  per the spec; extend the msgbus loopback DV to exercise the real address/data
-  mapping. Un-FLAG §F.
-- **Accept:** msgbus read/write over the mapped transport verified in DV; §F
-  un-FLAGged.
+### I4. Management/sideband register mapping (UCIe 2.0) — DONE
+- **Why:** regfile ↔ UCIe-2.0 management/sideband transport mapping was FLAGGED (§F).
+- **Files:** `rtl/ucie2_mgmt_sideband.sv` (new transport), `rtl/ucie2_pipe7_bridge.sv`
+  (address demux + management regfile), `rtl/ucie2_pipe7_pkg.sv` (§F opcodes/space),
+  `dv/pyuvm/test_mgmt.py` (`make mgmt`), CI + docs.
+- **What landed:** `ucie2_mgmt_sideband` is a UCIe-2.0-style management/sideband
+  register-access transport — a requester + completer wired back-to-back over an
+  on-die serial sideband bus. A controller register request is serialised into a
+  sideband packet (`{op, Addr[11:8]}, Addr[7:0], [Data]`; idle = 0x00), the completer
+  drives a management register file and returns a completion (`{SB_MGMT_CPL, status},
+  [Data]`); a response watchdog bounds the wait. The bridge routes the shared
+  `mb_req_*` register-access port by address: the management window
+  (`REG_MGMT_BASE` 0x010, decode span 0x010..0x01F) → the sideband transport;
+  everything else → the PIPE 7.1 M2P/P2M message bus, **unchanged**. The Gen5
+  round-trip issues no register requests, so the sacred trace is byte-identical.
+- **Accept (met):** `make mgmt` verifies write/read-back across the 8 backing
+  registers, a status-ERR completion for an in-space-but-unbacked address, and a
+  PHY-space regression (still routed to the PIPE msgbus). §F un-FLAGged — the last
+  of the four FLAGGED contract items. Verified locally: lint / pyuvm / mgmt /
+  lint-uvm / formal green.
 
 ---
 

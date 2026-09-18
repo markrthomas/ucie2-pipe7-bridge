@@ -143,17 +143,36 @@ module ucie2_pipe7_bridge
     .phy_status, .pclk_change_ok(1'b1)
   );
 
-  // ================= Message bus + regfile (pclk) =================
+  // ================= Controller register-access plane (pclk) =================
+  // The controller's register-access request (mb_req_*) is routed by ADDRESS:
+  //   - management space (REG_MGMT_BASE .. +MGMT_SPACE_SPAN) -> the UCIe-2.0
+  //     management/sideband transport (ucie2_mgmt_sideband, Phase I I4);
+  //   - everything else -> the PIPE 7.1 M2P/P2M message bus (the MAC<->PHY config
+  //     plane, unchanged from before).
+  // One outstanding transaction across the shared port (req_ready gates on both
+  // planes). The Gen5 round-trip issues no register requests, so the sacred trace
+  // is unaffected.
+  wire mgmt_space = (mb_req_addr >= REG_MGMT_BASE) &&
+                    (mb_req_addr <  REG_MGMT_BASE + MB_ADDR_WIDTH'(MGMT_SPACE_SPAN));
+
+  // ---- PIPE 7.1 message bus (PHY config plane) ----
+  wire                     mbus_req_ready, mbus_busy, mbus_rsp_valid;
+  wire                     mbus_rsp_is_read, mbus_rsp_error;
+  wire [MB_DATA_WIDTH-1:0] mbus_rsp_rdata;
   pipe7_msgbus_master mbus (
     .pclk, .reset_n(pclk_rst_n),
-    .req_valid(mb_req_valid), .req_write(mb_req_write), .req_committed(mb_req_committed),
+    .req_valid(mb_req_valid && !mgmt_space),
+    .req_write(mb_req_write), .req_committed(mb_req_committed),
     .req_addr(mb_req_addr), .req_wdata(mb_req_wdata),
-    .req_ready(mb_req_ready), .busy(mb_busy),
-    .rsp_valid(mb_rsp_valid), .rsp_is_read(mb_rsp_is_read), .rsp_rdata(mb_rsp_rdata),
-    .rsp_error(mb_rsp_error),
+    .req_ready(mbus_req_ready), .busy(mbus_busy),
+    .rsp_valid(mbus_rsp_valid), .rsp_is_read(mbus_rsp_is_read), .rsp_rdata(mbus_rsp_rdata),
+    .rsp_error(mbus_rsp_error),
     .m2p(m2p_message_bus), .p2m(p2m_message_bus)
   );
-  wire mb_wr = mb_req_valid && mb_req_ready && mb_req_write;   // write-through
+  // PHY Tx-control shadow regfile: written-through from PHY-space writes; the
+  // datapath reads PAM4RestrictedLevels from it. (Management-space writes are
+  // steered away by !mgmt_space and never disturb this window.)
+  wire mb_wr = mb_req_valid && mb_req_ready && mb_req_write && !mgmt_space;
   /* verilator lint_off UNUSEDSIGNAL */
   wire [MB_DATA_WIDTH-1:0]   rf_rdata_nc;
   wire                       rf_hit_nc;
@@ -164,6 +183,43 @@ module ucie2_pipe7_bridge
     .host_we(mb_wr), .host_re(1'b0), .host_addr(mb_req_addr), .host_wdata(mb_req_wdata),
     .host_rdata(rf_rdata_nc), .host_hit(rf_hit_nc), .regs_flat(rf_snap)
   );
+
+  // ---- UCIe 2.0 management/sideband transport + management regfile (Phase I I4) ----
+  wire                     mgmt_req_ready, mgmt_busy, mgmt_rsp_valid;
+  wire                     mgmt_rsp_is_read, mgmt_rsp_error;
+  wire [MB_DATA_WIDTH-1:0] mgmt_rsp_rdata;
+  wire                     mgmt_rf_we, mgmt_rf_re, mgmt_rf_hit;
+  wire [MB_ADDR_WIDTH-1:0] mgmt_rf_addr;
+  wire [MB_DATA_WIDTH-1:0] mgmt_rf_wdata, mgmt_rf_rdata;
+  /* verilator lint_off UNUSEDSIGNAL */
+  wire [MB_BUS_WIDTH-1:0]                 sb_m2c_nc, sb_c2m_nc;   // sideband taps (waves)
+  wire [NUM_MGMT_REGS*MB_DATA_WIDTH-1:0]  mgmt_rf_snap;
+  /* verilator lint_on UNUSEDSIGNAL */
+  ucie2_mgmt_sideband mgmt (
+    .pclk, .reset_n(pclk_rst_n),
+    .req_valid(mb_req_valid && mgmt_space),
+    .req_write(mb_req_write), .req_addr(mb_req_addr), .req_wdata(mb_req_wdata),
+    .req_ready(mgmt_req_ready), .busy(mgmt_busy),
+    .rsp_valid(mgmt_rsp_valid), .rsp_is_read(mgmt_rsp_is_read),
+    .rsp_rdata(mgmt_rsp_rdata), .rsp_error(mgmt_rsp_error),
+    .rf_we(mgmt_rf_we), .rf_re(mgmt_rf_re), .rf_addr(mgmt_rf_addr),
+    .rf_wdata(mgmt_rf_wdata), .rf_rdata(mgmt_rf_rdata), .rf_hit(mgmt_rf_hit),
+    .sb_m2c(sb_m2c_nc), .sb_c2m(sb_c2m_nc)
+  );
+  pipe7_regfile #(.NUM_REGS(NUM_MGMT_REGS), .BASE_ADDR(REG_MGMT_BASE)) mgmt_rf (
+    .pclk, .reset_n(pclk_rst_n),
+    .host_we(mgmt_rf_we), .host_re(mgmt_rf_re), .host_addr(mgmt_rf_addr),
+    .host_wdata(mgmt_rf_wdata),
+    .host_rdata(mgmt_rf_rdata), .host_hit(mgmt_rf_hit), .regs_flat(mgmt_rf_snap)
+  );
+
+  // ---- Shared register-access response mux (one outstanding txn at a time) ----
+  assign mb_req_ready   = mbus_req_ready & mgmt_req_ready;   // accept only when both planes idle
+  assign mb_busy        = mbus_busy | mgmt_busy;
+  assign mb_rsp_valid   = mbus_rsp_valid | mgmt_rsp_valid;
+  assign mb_rsp_is_read = mgmt_rsp_valid ? mgmt_rsp_is_read : mbus_rsp_is_read;
+  assign mb_rsp_rdata   = mgmt_rsp_valid ? mgmt_rsp_rdata   : mbus_rsp_rdata;
+  assign mb_rsp_error   = mgmt_rsp_valid ? mgmt_rsp_error   : mbus_rsp_error;
   localparam int PAM4_IDX = int'(REG_PHY_PAM4_RESTRICTED_LEVELS) - int'(REG_PHY_TX_CTRL_BASE);
   wire [MB_DATA_WIDTH-1:0] pam4_levels = rf_snap[PAM4_IDX*MB_DATA_WIDTH +: MB_DATA_WIDTH];
 

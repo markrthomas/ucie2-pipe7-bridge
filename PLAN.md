@@ -454,8 +454,14 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
   checks `rx_overflow` sets and post-overflow flits are retracted — which ALSO delivers
   the `rx_overflow` injection deferred from I5/I6. Byte-identical (no overflow → no
   cancel). Un-FLAGGED §B.
-- [ ] **I4. Management/sideband register mapping** to UCIe 2.0
-  (`pipe7_regfile.sv`, `pipe7_msgbus_master.sv`; un-FLAG §F).
+- [x] **I4. Management/sideband register mapping** to UCIe 2.0 — DONE. New
+  `rtl/ucie2_mgmt_sideband.sv` serialises controller register accesses into
+  UCIe-2.0-style sideband packets and completes them against a management register
+  file (`REG_MGMT_BASE` window); the bridge routes the shared `mb_req_*` port by
+  address (management space → sideband transport, else → the PIPE 7.1 msgbus, which
+  is unchanged). `dv/pyuvm/test_mgmt.py` (`make mgmt`) verifies write/read-back, the
+  unbacked-address status error, and a PHY-space regression. §F un-FLAGged — the
+  LAST of the four FLAGGED contract items.
 - [x] **I5. Active error-injection DV** — DONE (core). New `dv/pyuvm/test_err_inject.py`
   (`make err-inject`) drives the PIPE RX legal → corrupt (illegal sync headers) →
   legal and proves the deframer raises `sync_error`, drops `block_locked`, then

@@ -18,7 +18,9 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   metrics/dashboard, waves, CI, Railway + Codespaces remote runners.
 - `make uvm` is the single canonical SV UVM gate (CI + the container run it); you
   can offload it from a laptop with `make uvm-remote [RUNNER=railway|codespace]`.
-- **Phase I in progress. I1 + I2 + I5 + I6 DONE.** I1: FDI link FSM (RETRAIN +
+- **Phase I in progress. I1 + I2 + I5 + I6 + I3 + I4 DONE — all four FLAGGED items resolved.**
+  I4: UCIe-2.0 management/sideband register-access transport (`ucie2_mgmt_sideband`,
+  `make mgmt`; §F un-FLAGged). I1: FDI link FSM (RETRAIN +
   managed states, encoding pinned, `make link-fsm`). I2: FDI `lp_is_os`/`pl_is_os`
   flit-type, `make is-os`. I5 (core): RX error-injection `make err-inject` (sync_error
   + loss-of-lock + re-lock). I6: Gen6 end-to-end + Gen5→Gen6 rate switch `make gen6`
@@ -26,8 +28,8 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   I3: `pl_flit_cancel` retracts flits recovered through an RX FIFO overflow
   (`make flit-cancel`, PW=160; also delivered the deferred rx_overflow injection).
   Each byte-identical in Gen5, verified locally (lint/pyuvm/link-fsm/is-os/err-inject/
-  gen6/flit-cancel/lint-uvm/b2b/formal); full `make uvm`+trace-compare confirmed by CI.
-  **I4 is next** — the LAST FLAGGED item; then I7/I8.
+  gen6/flit-cancel/mgmt/lint-uvm/formal); full `make uvm`+trace-compare confirmed by CI.
+  **I7 is next** (constrained-random + coverage closure); then I8.
 
 ## Work queue (tick as you go; ▶ = do next)
 
@@ -41,9 +43,11 @@ Detail for each is in `docs/phase_i_design_completion.md`.
 - [x] **I6. Gen6 PAM4 end-to-end + Gen5→Gen6 rate switch** — done (`make gen6`, PW=160).
 - [x] **I3. `pl_flit_cancel` semantics** — done (`make flit-cancel`, PW=160; retract flits
   recovered through an RX FIFO overflow — also delivered the deferred rx_overflow injection).
-- [ ] ▶ **I4. Management/sideband register mapping** (`pipe7_regfile`/`pipe7_msgbus_master`;
-  un-FLAG §F — the last FLAGGED item).
-- [ ] **I7. Constrained-random + coverage closure** (backpressure still deferred here).
+- [x] **I4. Management/sideband register mapping** — done (`make mgmt`; §F un-FLAGged, the
+  LAST FLAGGED item). New `ucie2_mgmt_sideband` transport serialises register accesses into
+  UCIe-2.0 sideband packets against a management regfile; the bridge routes `mb_req_*` by
+  address (management space → sideband, else → PIPE msgbus). **All four FLAGGED items resolved.**
+- [ ] ▶ **I7. Constrained-random + coverage closure** (backpressure still deferred here).
 - [ ] **I8. H3b** — full-duplex SV UVM + credit FDI seam + B2B trace gate.
 
 *(Update the ▶ marker and check boxes here in the same PR that lands each item.)*
@@ -58,7 +62,9 @@ a row in the same change that resolves it.
 | `fdi_state_e` encoding | §C | I1 | ✅ resolved |
 | `is_os` derivation/forwarding | §B.1 | I2 | ✅ resolved |
 | `pl_flit_cancel` | §B | I3 | ✅ resolved |
-| mgmt/sideband reg map (`pkg.sv:132`, `pipe7_regfile`, `pipe7_msgbus_master`) | §F | I4 | ▶ open (last one) |
+| mgmt/sideband reg map (`ucie2_mgmt_sideband`, `pipe7_regfile`) | §F | I4 | ✅ resolved (last one) |
+
+**All four FLAGGED contract items are resolved.** `rtl/ucie2_pipe7_pkg.sv` stays frozen.
 
 ## Commands
 

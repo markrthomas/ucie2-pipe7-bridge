@@ -133,8 +133,35 @@ package ucie2_pipe7_pkg;
   // same caveat as the predecessor). crosscheck section F.
   parameter logic [MB_ADDR_WIDTH-1:0] REG_PHY_PAM4_RESTRICTED_LEVELS = 12'h406;
   /* verilator lint_on UNUSEDPARAM */
-  // FLAGGED: register file <-> UCIe 2.0 management/sideband transport mapping is
-  //          future work (crosscheck section F); the msgbus loop is the config
-  //          plane for now.
+
+  // ===========================================================================
+  // UCIe 2.0 management/sideband register-access transport (Phase I I4)
+  // ===========================================================================
+  // Resolves the §F FLAG: the register file is mapped onto a UCIe-2.0-style
+  // management/sideband transport (ucie2_mgmt_sideband) — register accesses are
+  // serialised into sideband packets and completed against a local management
+  // register window, distinct from the PIPE 7.1 M2P/P2M message bus above (which
+  // stays the MAC<->PHY config plane). crosscheck §F — resolved, no longer FLAGGED.
+  //
+  // Sideband packet opcodes (byte 0 upper nibble; idle bus = 0x00, so opcodes are
+  // non-zero). Completion carries a status in its low nibble.
+  typedef enum logic [3:0] {
+    SB_MGMT_NOP = 4'h0,
+    SB_MGMT_RD  = 4'h1,   // register read  request
+    SB_MGMT_WR  = 4'h2,   // register write request
+    SB_MGMT_CPL = 4'h4    // completion (status in low nibble; read data follows)
+  } sb_mgmt_op_e;
+  parameter logic [3:0] SB_CPL_OK  = 4'h0;   // access hit a management register
+  parameter logic [3:0] SB_CPL_ERR = 4'h1;   // address hit no management register
+
+  // Local management register space. The DECODE span (what the bridge routes to
+  // the sideband transport instead of the PIPE msgbus) is intentionally wider than
+  // the backing register window, so an in-space address that hits no register
+  // still returns a well-formed error completion. Base sits clear of the PHY Tx
+  // control block (0x400..0x40A). The exact UCIe-2.0 management address map is
+  // implementation-defined here (documented in crosscheck §F).
+  parameter logic [MB_ADDR_WIDTH-1:0] REG_MGMT_BASE   = 12'h010;
+  parameter int unsigned              MGMT_SPACE_SPAN = 16;   // 0x010..0x01F routed to sideband
+  parameter int unsigned              NUM_MGMT_REGS   = 8;    // 0x010..0x017 backed by a regfile
 
 endpackage : ucie2_pipe7_pkg
