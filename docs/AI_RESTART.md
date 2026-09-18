@@ -23,9 +23,11 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   flit-type, `make is-os`. I5 (core): RX error-injection `make err-inject` (sync_error
   + loss-of-lock + re-lock). I6: Gen6 end-to-end + Gen5→Gen6 rate switch `make gen6`
   (bridge routes the FDI block into the Gen6 raw path, gated by rate; built at PW=160).
+  I3: `pl_flit_cancel` retracts flits recovered through an RX FIFO overflow
+  (`make flit-cancel`, PW=160; also delivered the deferred rx_overflow injection).
   Each byte-identical in Gen5, verified locally (lint/pyuvm/link-fsm/is-os/err-inject/
-  gen6/lint-uvm/b2b/formal); full `make uvm`+trace-compare confirmed by CI.
-  **I3 is next** (the two remaining FLAGGED items I3/I4, then I7/I8).
+  gen6/flit-cancel/lint-uvm/b2b/formal); full `make uvm`+trace-compare confirmed by CI.
+  **I4 is next** — the LAST FLAGGED item; then I7/I8.
 
 ## Work queue (tick as you go; ▶ = do next)
 
@@ -37,15 +39,12 @@ Detail for each is in `docs/phase_i_design_completion.md`.
 - [x] **I5. Active error-injection DV (core)** — done (`make err-inject`; sync_error +
   loss-of-lock + re-lock). `rx_overflow`/backpressure active-injection deferred → I7.
 - [x] **I6. Gen6 PAM4 end-to-end + Gen5→Gen6 rate switch** — done (`make gen6`, PW=160).
-- [ ] ▶ **I3. `pl_flit_cancel` semantics** (`ucie2_fdi_egress.sv`; un-FLAG §B).
-- [ ] **I4. Management/sideband register mapping** (un-FLAG §F).
-- [ ] **I7. Constrained-random + coverage closure** (+ deferred rx_overflow/backpressure).
+- [x] **I3. `pl_flit_cancel` semantics** — done (`make flit-cancel`, PW=160; retract flits
+  recovered through an RX FIFO overflow — also delivered the deferred rx_overflow injection).
+- [ ] ▶ **I4. Management/sideband register mapping** (`pipe7_regfile`/`pipe7_msgbus_master`;
+  un-FLAG §F — the last FLAGGED item).
+- [ ] **I7. Constrained-random + coverage closure** (backpressure still deferred here).
 - [ ] **I8. H3b** — full-duplex SV UVM + credit FDI seam + B2B trace gate.
-- [ ] **I6. Gen6 PAM4 end-to-end + Gen5↔Gen6 rate switch.**
-- [ ] **I3. `pl_flit_cancel` semantics.**
-- [ ] **I4. Management/sideband register mapping (UCIe 2.0).**
-- [ ] **I7. Constrained-random expansion + functional-coverage closure.**
-- [ ] **I8. H3b — full-duplex SV UVM + credit FDI seam + B2B trace gate.**
 
 *(Update the ▶ marker and check boxes here in the same PR that lands each item.)*
 
@@ -54,12 +53,12 @@ Detail for each is in `docs/phase_i_design_completion.md`.
 Source of truth: `docs/ucie2_pipe71_spec_crosscheck.md` → "FLAGGED items". Un-FLAG
 a row in the same change that resolves it.
 
-| Item | FLAGGED at (RTL) | Spec § | Phase I item |
-|------|------------------|--------|--------------|
-| `fdi_state_e` encoding | `pkg.sv:29`, `ucie2_fdi_link_fsm.sv:10` | §C | I1 |
-| `is_os` derivation/forwarding | `ucie2_fdi_ingress.sv:36`, `pkg.sv:56`, `ucie2_pipe7_bridge.sv:283` | §B.1 | I2 |
-| `pl_flit_cancel` | `ucie2_fdi_egress.sv:34` | §B | I3 |
-| mgmt/sideband reg map | `pkg.sv:132` | §F | I4 |
+| Item | Spec § | Phase I item | Status |
+|------|--------|--------------|--------|
+| `fdi_state_e` encoding | §C | I1 | ✅ resolved |
+| `is_os` derivation/forwarding | §B.1 | I2 | ✅ resolved |
+| `pl_flit_cancel` | §B | I3 | ✅ resolved |
+| mgmt/sideband reg map (`pkg.sv:132`, `pipe7_regfile`, `pipe7_msgbus_master`) | §F | I4 | ▶ open (last one) |
 
 ## Commands
 

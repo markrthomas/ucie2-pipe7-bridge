@@ -252,28 +252,15 @@ module ucie2_pipe7_bridge
   wire            rxc_rd_valid, rxc_rd_ready, rxc_wr_ready;
   wire [PWID-1:0] rxc_rd_data;
   /* verilator lint_off UNUSEDSIGNAL */
-  wire            rxc_wr_full, rxc_rd_error;
+  wire            rxc_wr_full;
   /* verilator lint_on UNUSEDSIGNAL */
+  wire            rxc_rd_error;   // per-block RX error carried by the CDC (I3)
 
   pipe7_rx_burst_fifo #(.WIDTH(PWID), .DEPTH(4)) rx_burst (
     .clk(pclk), .reset_n(pclk_rst_n),
     .push_cnt(rx_push_cnt), .din0(rx_din0), .din1(rx_din1),
     .pop_valid(rxb_valid), .pop_data(rxb_data), .pop_ready(rxc_wr_ready),
     .overflow(rxb_overflow)
-  );
-
-  pipe7_cdc_elastic_buf #(.INPUT_DATA_WIDTH(PWID), .OUTPUT_DATA_WIDTH(PWID), .BUFFER_DEPTH(BUFFER_DEPTH)) rx_cdc (
-    .wr_clk(pclk), .rd_clk(lclk), .rst_n(both_rst_n),
-    .wr_valid(rxb_valid), .wr_ready(rxc_wr_ready),
-    .wr_data(rxb_data), .wr_error(1'b0), .wr_full(rxc_wr_full),
-    .rd_valid(rxc_rd_valid), .rd_ready(rxc_rd_ready), .rd_data(rxc_rd_data), .rd_error(rxc_rd_error)
-  );
-
-  ucie2_fdi_egress egress (
-    .blk_valid(rxc_rd_valid), .blk_data(rxc_rd_data[BLOCK_PAYLOAD-1:0]),
-    .blk_is_os(rxc_rd_data[BLOCK_PAYLOAD]),
-    .blk_ready(rxc_rd_ready), .link_active(link_active),
-    .pl_data, .pl_valid, .pl_is_os, .pl_flit_cancel
   );
 
   // rx_overflow: sticky error flag — set on any burst overflow, cleared only by
@@ -285,6 +272,23 @@ module ucie2_pipe7_bridge
     else if (rxb_overflow) rx_overflow_q <= 1'b1;
   end
   assign rx_overflow = rx_overflow_q;
+
+  // Tag blocks written to the RX CDC while the RX FIFO has overflowed (I3): the CDC
+  // carries this per-block error to the read (lclk) side as rxc_rd_error, which the
+  // egress turns into pl_flit_cancel to retract the untrustworthy flit.
+  pipe7_cdc_elastic_buf #(.INPUT_DATA_WIDTH(PWID), .OUTPUT_DATA_WIDTH(PWID), .BUFFER_DEPTH(BUFFER_DEPTH)) rx_cdc (
+    .wr_clk(pclk), .rd_clk(lclk), .rst_n(both_rst_n),
+    .wr_valid(rxb_valid), .wr_ready(rxc_wr_ready),
+    .wr_data(rxb_data), .wr_error(rx_overflow_q), .wr_full(rxc_wr_full),
+    .rd_valid(rxc_rd_valid), .rd_ready(rxc_rd_ready), .rd_data(rxc_rd_data), .rd_error(rxc_rd_error)
+  );
+
+  ucie2_fdi_egress egress (
+    .blk_valid(rxc_rd_valid), .blk_data(rxc_rd_data[BLOCK_PAYLOAD-1:0]),
+    .blk_is_os(rxc_rd_data[BLOCK_PAYLOAD]), .blk_err(rxc_rd_error),
+    .blk_ready(rxc_rd_ready), .link_active(link_active),
+    .pl_data, .pl_valid, .pl_is_os, .pl_flit_cancel
+  );
 
   // Intentionally unused: PIPE RxStatus/RxElecIdle (handling is future work).
   // The recovered block's is_os bit is now forwarded to FDI RX via pl_is_os (I2).

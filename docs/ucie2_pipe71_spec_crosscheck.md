@@ -53,7 +53,7 @@ and the D2D-adapter deep-dive; state encodings and flit-type mapping are FLAGGED
 | `pl_data`      | out | `FDI_DW` | received flit/stream payload | confirmed |
 | `pl_valid`     | out | 1 | `pl_data` valid (RX has **no** backpressure) | confirmed |
 | `pl_is_os`     | out | 1 | recovered RX flit-type, valid with `pl_valid` | added Phase I I2 (§B.1) |
-| `pl_flit_cancel`| out | 1 | adapter retracts a flit in flight | confirmed name; **FLAGGED** semantics/handling deferred |
+| `pl_flit_cancel`| out | 1 | adapter retracts a flit in flight | RESOLVED (Phase I I3): asserted with `pl_valid` to retract a flit recovered through an RX error (FIFO overflow) |
 | `lp_state_req` | in  | 4 | requested link state (`fdi_state_e`) | confirmed signal; **FLAGGED** encoding |
 | `pl_state_sts` | out | 4 | current link state (`fdi_state_e`) | confirmed signal; **FLAGGED** encoding |
 | `lp_linkerror` | in  | 1 | protocol layer flags link error | confirmed |
@@ -163,7 +163,9 @@ header (1b/1b wide data); PAM4 precoding is PHY-side; MAC's only knob is
    implementation. See §C.
 2. ~~`is_os` derivation from FDI flit type (§B.1).~~ **RESOLVED (Phase I I2)** — FDI
    `lp_is_os` input drives it at ingress; recovered bit forwarded on `pl_is_os`. See §B.1.
-3. `pl_flit_cancel` semantics/handling (§B). *(Phase I I3)*
+3. ~~`pl_flit_cancel` semantics/handling (§B).~~ **RESOLVED (Phase I I3)** — the adapter
+   asserts it with `pl_valid` to retract a flit recovered through an RX FIFO overflow
+   (per-block error carried on the RX CDC error channel). See §B.
 4. Register file ↔ UCIe 2.0 management/sideband transport mapping (§F). *(Phase I I4)*
 
 ## Sign-off

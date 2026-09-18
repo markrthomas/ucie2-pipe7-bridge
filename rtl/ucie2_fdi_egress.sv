@@ -18,6 +18,7 @@ module ucie2_fdi_egress
   input  wire              blk_valid,
   input  wire [BLK-1:0]    blk_data,
   input  wire              blk_is_os,     // recovered flit-type (deframer sync header)
+  input  wire              blk_err,       // recovered block came through an RX error
   output wire              blk_ready,
   input  wire              link_active,   // from ucie2_fdi_link_fsm
 
@@ -35,8 +36,12 @@ module ucie2_fdi_egress
   assign pl_data   = FDI_W'(blk_data);
   // Forward the recovered flit-type to FDI RX (Phase I I2; crosscheck B resolved).
   assign pl_is_os  = blk_is_os;
-  // FLAGGED (crosscheck B): pl_flit_cancel (adapter flit retraction) not modeled.
-  assign pl_flit_cancel = 1'b0;
+  // pl_flit_cancel (adapter flit retraction), Phase I I3; crosscheck B resolved.
+  // The adapter retracts a flit in flight when the recovered block is untrustworthy
+  // -- it arrived through an RX datapath error (blk_err, carried per-block from the
+  // RX FIFO/CDC error channel). Asserted coincident with pl_valid so the protocol
+  // layer discards exactly that flit.
+  assign pl_flit_cancel = pl_valid & blk_err;
 
 endmodule : ucie2_fdi_egress
 
