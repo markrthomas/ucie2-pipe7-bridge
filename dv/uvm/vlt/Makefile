@@ -112,7 +112,8 @@ ci: lint run
 # bridges its directed-round-trip properties could false-fire; the B2B tier is
 # scoreboard-gated instead. Stimulus flows via the same +VEC/+N_FLITS/+RUN_PCLK
 # plusargs as `run` (config-pcie adds +VEC via a pre-framed PIPE word vector).
-.PHONY: lint-b2b lint-b2b-ucie lint-b2b-pcie run-b2b run-b2b-ucie run-b2b-pcie
+.PHONY: lint-b2b lint-b2b-ucie lint-b2b-pcie lint-b2b-ucie-fd \
+        run-b2b run-b2b-ucie run-b2b-pcie run-b2b-ucie-fd
 
 HARNESS_DIR := $(abspath $(VLT_DIR)/../../harness)
 B2B         := $(abspath $(SV)/b2b)
@@ -121,9 +122,12 @@ B2B_UCIE_SRCS := $(RTL_SRCS) $(B2B)/b2b_ucie_if.sv $(B2B)/b2b_ucie_uvm_pkg.sv \
                  $(HARNESS_DIR)/b2b_ucie_pcie_ucie.sv $(B2B)/tb_b2b_ucie.sv
 B2B_PCIE_SRCS := $(RTL_SRCS) $(B2B)/b2b_pcie_if.sv $(B2B)/b2b_pcie_uvm_pkg.sv \
                  $(HARNESS_DIR)/b2b_pcie_ucie_pcie.sv $(B2B)/tb_b2b_pcie.sv
+# Full-duplex UCIe (Phase I I8): own if/pkg/tb + the *_fd harness (both directions).
+B2B_UCIE_FD_SRCS := $(RTL_SRCS) $(B2B)/b2b_ucie_fd_if.sv $(B2B)/b2b_ucie_fd_uvm_pkg.sv \
+                 $(HARNESS_DIR)/b2b_ucie_pcie_ucie_fd.sv $(B2B)/tb_b2b_ucie_fd.sv
 
-lint-b2b: lint-b2b-ucie lint-b2b-pcie
-run-b2b:  run-b2b-ucie run-b2b-pcie
+lint-b2b: lint-b2b-ucie lint-b2b-pcie lint-b2b-ucie-fd
+run-b2b:  run-b2b-ucie run-b2b-pcie run-b2b-ucie-fd
 
 lint-b2b-ucie: _require-uvm-home
 	$(VERILATOR) $(LINTFLAGS) --top-module tb_b2b_ucie $(INCS) $(UVM_HDR) $(B2B_UCIE_SRCS)
@@ -132,6 +136,10 @@ lint-b2b-ucie: _require-uvm-home
 lint-b2b-pcie: _require-uvm-home
 	$(VERILATOR) $(LINTFLAGS) --top-module tb_b2b_pcie $(INCS) $(UVM_HDR) $(B2B_PCIE_SRCS)
 	@echo "[lint-uvm] B2B PCIe env elaborates OK"
+
+lint-b2b-ucie-fd: _require-uvm-home
+	$(VERILATOR) $(LINTFLAGS) --top-module tb_b2b_ucie_fd $(INCS) $(UVM_HDR) $(B2B_UCIE_FD_SRCS)
+	@echo "[lint-uvm] B2B UCIe full-duplex env elaborates OK"
 
 # The `run` pass/fail check without the [SVA] branch (no bound checker here).
 define B2B_RUN_CHECK
@@ -157,6 +165,13 @@ run-b2b-pcie: _require-uvm-home
 	  $(UVM_HDR) $(UVM_DPI) $(B2B_PCIE_SRCS)
 	$(OBJ)/b2b_pcie/Vtb_b2b_pcie $(UVM_PLUSARGS) $(STIM_PLUSARGS) 2>&1 | tee $(OBJ)/b2b_pcie/run.log
 	$(call B2B_RUN_CHECK,$(OBJ)/b2b_pcie)
+
+run-b2b-ucie-fd: _require-uvm-home
+	rm -rf $(OBJ)/b2b_ucie_fd && mkdir -p $(OBJ)/b2b_ucie_fd
+	$(VERILATOR) $(VFLAGS) --top-module tb_b2b_ucie_fd --Mdir $(OBJ)/b2b_ucie_fd $(INCS) \
+	  $(UVM_HDR) $(UVM_DPI) $(B2B_UCIE_FD_SRCS)
+	$(OBJ)/b2b_ucie_fd/Vtb_b2b_ucie_fd $(UVM_PLUSARGS) $(STIM_PLUSARGS) 2>&1 | tee $(OBJ)/b2b_ucie_fd/run.log
+	$(call B2B_RUN_CHECK,$(OBJ)/b2b_ucie_fd)
 
 clean:
 	rm -rf $(OBJ)

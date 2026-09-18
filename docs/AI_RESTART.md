@@ -31,7 +31,9 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   Each byte-identical in Gen5, verified locally (lint/pyuvm/link-fsm/is-os/err-inject/
   gen6/flit-cancel/mgmt/lint-uvm/formal); full `make uvm`+trace-compare confirmed by CI.
   I7: `make fcov` closed to honest 100% (39→53 bins) with seeded CRV + error injection.
-  **I8 is next** — the last Phase I item (H3b full-duplex SV UVM + credit seam + B2B trace).
+  **I8 (last item) in progress, staged I8a–I8d.** I8a done: full-duplex SV UVM UCIe tier
+  (`tb_b2b_ucie_fd`, mirrors PyUVM `test_b2b_ucie_fd`; in `uvm-b2b`+CI). Next: I8b (pcie-fd),
+  I8c (B2B byte-identical trace gate), I8d (credit FDI seam if needed).
 
 ## Work queue (tick as you go; ▶ = do next)
 
@@ -53,7 +55,14 @@ Detail for each is in `docs/phase_i_design_completion.md`.
   honest 100%; seeded CRV + OS/data interleave + backpressure; closed the sync_error /
   rx_overflow error bins + is_os + 8-state fdi_state — also lands the deferred
   rx_overflow/backpressure injection).
-- [ ] ▶ **I8. H3b** — full-duplex SV UVM + credit FDI seam + B2B trace gate.
+- [ ] ▶ **I8. H3b** — full-duplex SV UVM + credit FDI seam + B2B trace gate. *(staged)*
+  - [x] **I8a.** Full-duplex SV UVM **UCIe** tier — `dv/uvm/sv/b2b/*_fd_*` (sided driver/
+    monitor, dual-direction scoreboard, `tb_b2b_ucie_fd`) mirroring the green PyUVM
+    `test_b2b_ucie_fd`; wired into `run-b2b`/`uvm-b2b` + CI. Lint-clean locally; `--binary`
+    runs in CI.
+  - [ ] **I8b.** Full-duplex SV UVM **PCIe** tier (mirror `test_b2b_pcie_fd`).
+  - [ ] **I8c.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM per-cycle, both fd tiers).
+  - [ ] **I8d.** Credit-based FDI seam (if long-burst flow control needs it).
 
 *(Update the ▶ marker and check boxes here in the same PR that lands each item.)*
 
