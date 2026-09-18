@@ -488,7 +488,16 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
   (error paths now included); this also lands the `rx_overflow`/backpressure injection
   deferred from I5/I6.
 - [ ] **I8. H3b** — full-duplex SV UVM tier + credit-based FDI seam + B2B
-  trace-compare gate.
+  trace-compare gate. *(staged; in progress)*
+  - [x] **I8a.** Full-duplex SV UVM **UCIe** tier — new `dv/uvm/sv/b2b/b2b_ucie_fd_*`
+    (a sided FDI-TX driver + RX monitor, a dual-direction scoreboard, `tb_b2b_ucie_fd`)
+    on the existing `b2b_ucie_pcie_ucie_fd` harness, mirroring the green PyUVM
+    `test_b2b_ucie_fd`. Both directions round-trip the shared vector; both bridges lock,
+    no sync_error. Wired into `run-b2b` / `uvm-b2b` + CI (the `--binary` run happens in
+    CI; lint-elaborates locally via `lint-b2b-uvm`).
+  - [ ] **I8b.** Full-duplex SV UVM **PCIe** tier (mirror `test_b2b_pcie_fd`).
+  - [ ] **I8c.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM, both fd tiers).
+  - [ ] **I8d.** Credit-based FDI seam (if long-burst flow control needs it).
 
 ## 8. Per-commit green gate
 

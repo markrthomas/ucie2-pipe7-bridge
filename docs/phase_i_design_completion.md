@@ -140,13 +140,28 @@ design may silently diverge from UCIe 2.0.
 
 ## Tier 3 — B2B completion
 
-### I8. H3b — full-duplex SV UVM tier + credit-based FDI seam + B2B trace gate
+### I8. H3b — full-duplex SV UVM tier + credit-based FDI seam + B2B trace gate *(staged)*
 - **Why:** the last open Phase H item.
 - **Files:** `dv/uvm/sv/b2b/` (full-duplex tops/tests mirroring the PyUVM
   `*_fd` variants), FDI-seam credit flow control in the harness/RTL as needed, and
   a byte-identical PyUVM↔SV-UVM per-cycle trace cross-check for the B2B configs.
 - **Accept:** full-duplex B2B green in **both** tiers; credit flow control holds
   for long bursts; a B2B trace-compare gate passes.
+- **Staging (only local-lintable; the `--binary` SV UVM run is CI-only, so this
+  large item lands in reviewable increments):**
+  - **I8a — DONE.** Full-duplex SV UVM **UCIe** tier: new `b2b_ucie_fd_if`, a *sided*
+    driver (`is_b`) + monitor (`at_b`) so one class serves both directions, a
+    dual-direction scoreboard, `b2b_ucie_fd_uvm_pkg` + `tb_b2b_ucie_fd`, on the
+    existing `b2b_ucie_pcie_ucie_fd` harness. Mirrors the green PyUVM
+    `test_b2b_ucie_fd` (forward A→B + reverse B→A round-trip the shared vector; both
+    bridges lock, no sync_error). Wired: `lint-b2b-ucie-fd` + `run-b2b-ucie-fd` in the
+    vlt Makefile (fanned into `lint-b2b`/`run-b2b`, so `lint-b2b-uvm`/`uvm-b2b` + CI
+    pick it up). Lint-elaborates locally; `--binary` run gated in CI.
+  - **I8b — open.** Full-duplex SV UVM **PCIe** tier (mirror `test_b2b_pcie_fd`).
+  - **I8c — open.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM per-cycle,
+    both full-duplex tiers) — the deferred H3 byte-identical B2B trace.
+  - **I8d — open.** Credit-based FDI seam, if long-burst flow control needs it (the
+    current ready/valid FDI-TX backpressure holds for the vector-length bursts today).
 
 ---
 

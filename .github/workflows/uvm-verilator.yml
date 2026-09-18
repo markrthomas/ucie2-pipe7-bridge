@@ -104,9 +104,9 @@ jobs:
 
       # B2B SV UVM tier (--binary), the second independent implementation of the
       # back-to-back configs. GATING. Uses the from-source Verilator + bundled UVM
-      # already set up above; two separate builds (ucie / pcie), each two bridges.
-      # No SVA bound here (see dv/uvm/vlt/Makefile). Reads the same shared vectors
-      # as make b2b (+VEC flits / +VEC_WORDS framed words).
+      # already set up above; three separate builds (ucie / pcie / ucie full-duplex),
+      # each two bridges. No SVA bound here (see dv/uvm/vlt/Makefile). Reads the same
+      # shared vectors as make b2b (+VEC flits / +VEC_WORDS framed words).
       - name: B2B SV UVM envs (--binary, make uvm-b2b)
         run: |
           make uvm-b2b \
@@ -125,6 +125,7 @@ jobs:
             dv/uvm/vlt/obj/run.log
             dv/uvm/vlt/obj/b2b_ucie/run.log
             dv/uvm/vlt/obj/b2b_pcie/run.log
+            dv/uvm/vlt/obj/b2b_ucie_fd/run.log
           retention-days: 7
           if-no-files-found: ignore
 
