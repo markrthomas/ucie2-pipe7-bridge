@@ -131,10 +131,20 @@ embedded in TxData/RxData. Gen6 = wide data, no 128b/130b sync header.
   outstanding txn; committed write blocks until write_ack.
 - `REG_PHY_TX_CTRL_BASE=0x400`..`0x40A`; `REG_PHY_PAM4_RESTRICTED_LEVELS=0x406`
   (sub-offset is a working value, not spec-pinned — same caveat as predecessor).
-- **UCIe 2.0 management/sideband:** UCIe 2.0 standardizes a management transport +
-  register access over sideband. Item 0 keeps the PIPE-side msgbus loop as the
-  config plane; mapping the register file onto the UCIe 2.0 management transport is
-  **FLAGGED** as future work (Phase B/§8), not frozen here.
+- **UCIe 2.0 management/sideband — RESOLVED (Phase I I4):** UCIe 2.0 standardizes a
+  management transport + register access over sideband. The register file is now
+  mapped onto that transport: `ucie2_mgmt_sideband` serialises a register access
+  into a UCIe-2.0-style **sideband packet** (`{op, Addr[11:8]}, Addr[7:0], [Data]`;
+  idle bus = 0x00, opcodes `SB_MGMT_RD/WR`, completion `{SB_MGMT_CPL, status}, [Data]`)
+  and completes it against a local **management register window** (`REG_MGMT_BASE`
+  0x010, 8 backing regs; a wider decode span 0x010..0x01F returns a well-formed
+  status-ERR completion for unbacked addresses). The bridge routes the shared
+  controller register-access port (`mb_req_*`) by address: management space →
+  sideband transport, everything else → the PIPE 7.1 M2P/P2M message bus (the
+  MAC↔PHY config plane, unchanged). Verified by `dv/pyuvm/test_mgmt.py`
+  (`make mgmt`): write/read-back, the unbacked-address error, and a PHY-space
+  regression. Exact UCIe-2.0 management address map / packet bit-positions are
+  implementation-defined here (the SET of opcodes + the addr/data mapping is pinned).
 
 ## G. Gen5 128b/130b framing (PCIe 6.x — reused, spec-cited)
 
@@ -155,7 +165,7 @@ header (1b/1b wide data); PAM4 precoding is PHY-side; MAC's only knob is
 | 0.4 | `rate_e` Gen5/Gen6 | 4 / 5 | §D (Ref 643108) |
 | 0.5 | `powerdown_e` | P0..P2 = 0..3 | §D (Ref 643108) |
 | 0.6 | `fdi_state_e` | 8-state set; encoding pinned (impl-defined, Phase I I1) | §C |
-| 0.7 | register map | msgbus loop; UCIe-2.0 mgmt mapping FLAGGED | §F |
+| 0.7 | register map | PIPE msgbus loop + UCIe-2.0 mgmt/sideband transport (Phase I I4) | §F |
 
 ## FLAGGED items (implemented, not spec-confirmed — revisit)
 1. ~~`fdi_state_e` numeric encodings (§C).~~ **RESOLVED (Phase I I1)** — pinned as an
@@ -166,7 +176,14 @@ header (1b/1b wide data); PAM4 precoding is PHY-side; MAC's only knob is
 3. ~~`pl_flit_cancel` semantics/handling (§B).~~ **RESOLVED (Phase I I3)** — the adapter
    asserts it with `pl_valid` to retract a flit recovered through an RX FIFO overflow
    (per-block error carried on the RX CDC error channel). See §B.
-4. Register file ↔ UCIe 2.0 management/sideband transport mapping (§F). *(Phase I I4)*
+4. ~~Register file ↔ UCIe 2.0 management/sideband transport mapping (§F).~~
+   **RESOLVED (Phase I I4)** — the register file is mapped onto a UCIe-2.0-style
+   management/sideband packet transport (`ucie2_mgmt_sideband`) with its own
+   management register window; the bridge routes `mb_req_*` by address space. See §F.
+
+**All four FLAGGED contract items are now resolved.** The `rtl/ucie2_pipe7_pkg.sv`
+encodings remain frozen (the I4 additions are new management-transport types/params,
+not changes to existing encodings).
 
 ## Sign-off
 - [x] All rows resolved; `rtl/ucie2_pipe7_pkg.sv` updated; encodings **frozen**;

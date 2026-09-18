@@ -94,7 +94,7 @@ else
   SEED_RESOLVED := $(SEED)
 endif
 
-.PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os err-inject gen6 flit-cancel b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
+.PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os err-inject gen6 flit-cancel mgmt b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
         lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
@@ -127,6 +127,7 @@ help:
 	@echo "  make err-inject    RX error-injection: sync_error + re-lock      [local]"
 	@echo "  make gen6          Gen6 end-to-end round-trip (PW=160, rate sw)  [local]"
 	@echo "  make flit-cancel   pl_flit_cancel: RX-overflow flit retraction    [local]"
+	@echo "  make mgmt          UCIe-2.0 management/sideband register access   [local]"
 	@echo "  make b2b           back-to-back two-bridge configs (PyUVM)       [local]"
 	@echo "                     (b2b-ucie: UCIe==PCIe link==UCIe; b2b-pcie: PCIe==UCIe"
 	@echo "                      link==PCIe. Two ucie2_pipe7_bridge joined by a"
@@ -296,6 +297,15 @@ gen6:
 flit-cancel:
 	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_flit_cancel PW=160 \
 	  SIM_BUILD=$(abspath dv/pyuvm/gen6_build)
+
+# ---- Management/sideband register access (Phase I I4) -----------------------
+# Drives the shared controller register-access port (mb_req_*) with management-
+# space addresses, which the bridge routes to the UCIe-2.0 management/sideband
+# transport (ucie2_mgmt_sideband) instead of the PIPE msgbus. Checks write/read-
+# back, the unbacked-address error completion, and that a PHY-space access still
+# uses the PIPE 7.1 message bus. Control-plane only, no bridge.trace.
+mgmt:
+	$(LOCAL_ENV) $(MAKE) -C dv/pyuvm MODULE=test_mgmt
 
 # ---- Back-to-back (B2B) two-bridge configs (PyUVM tier) ---------------------
 # Two ucie2_pipe7_bridge instances wired together by a dv/harness wrapper top,
