@@ -119,15 +119,22 @@ design may silently diverge from UCIe 2.0.
 - **Accept:** Gen6 round-trip scoreboard-clean in both tiers; rate-switch test
   passes; trace-compare green for the Gen6 path.
 
-### I7. Constrained-random expansion + functional-coverage closure (rest of G21+)
-- **Why:** stimulus varies only in length today; coverage bins aren't closed.
-- **Files:** `dv/pyuvm/seq_lib/`, `dv/common/models/coverage_model.py`,
-  `dv/common/vectors/gen_vectors.py`.
-- **Scope:** interleave OS/data, randomized backpressure patterns, state-transition
-  sequences; drive toward closing the `cocotb_coverage` bins; keep the shared
-  vector byte-identical between tiers.
-- **Accept:** `make fcov` coverage rises to the agreed target; new random profiles
-  reproducible from a seed and consumed identically by both TBs.
+### I7. Constrained-random expansion + functional-coverage closure — DONE
+- **Why:** stimulus varied only in length; coverage bins (notably the error paths)
+  were not closed.
+- **Files:** `dv/pyuvm/test_fcov.py`, `dv/common/models/coverage_model.py`, CI + docs.
+- **What landed:** the `make fcov` driver gained **seeded constrained-random**
+  stimulus (reproducible via `FCOV_SEED`): random payloads (`gen_vectors` random
+  profile), OS/data flit-type interleave, and randomised FDI backpressure bubbles.
+  New coverage points close the two previously-FLAGGED error-status bins —
+  `sync_error=1` (a run of illegal PIPE-RX sync headers → loss of block lock) and
+  `rx_overflow=1` (re-feeding legal blocks while the FDI drain is stalled overflows
+  the RX CDC + depth-4 burst FIFO) — and add `is_os` flit-type + the full 8-state
+  `fdi_state_e` link space (a directed link-state sweep). This also delivers the
+  `rx_overflow`/backpressure active-injection deferred from I5/I6.
+- **Accept (met):** functional coverage rises **39 → 53 bins, honest 100%** (error
+  paths included), reproducible across seeds (verified `FCOV_SEED=0xC0FFEE` and
+  `0x1234`). `make fcov` gated in CI on the independent Icarus engine.
 
 ---
 

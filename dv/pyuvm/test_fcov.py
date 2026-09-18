@@ -9,12 +9,16 @@ different simulator, a different testbench, a different coverage tool, and a
 different metric (functional vs line/round-trip). It also runs locally under
 Verilator (``make fcov SIM=verilator``).
 
-The stimulus reaches an honest 100% of the loopback-reachable functional space.
-The two error-status bins (sync_error=1, rx_overflow=1) need an RX-inject / sink-
-stall wrapper and are FLAGGED for Phase F -- they are intentionally not part of the
-100% set here (see coverage_model.py).
+Phase I I7 turned the fixed-length stimulus into seeded constrained-random stimulus
+(reproducible via ``FCOV_SEED``): random payloads, OS/data flit-type interleave, and
+randomised FDI backpressure bubbles, plus a directed link-state sweep and an RX error
+-injection phase. That closes the two error-status bins (``sync_error=1`` via illegal
+PIPE-RX sync headers, ``rx_overflow=1`` via an RX-drain stall) and adds the ``is_os``
+flit-type + full ``fdi_state_e`` link coverage, so the honest-100% set now includes
+the error paths (39 -> 53 bins). See coverage_model.py.
 """
 import os
+import random
 
 import cocotb
 from cocotb.clock import Clock
@@ -24,13 +28,17 @@ from pyuvm import uvm_test
 
 import coverage_model as cov
 import gen_vectors as gv
+import framing_model as fm
 
 # control encodings (ucie2_pipe7_pkg)
 REQ_POWER, REQ_RATE, REQ_WIDTH = 0, 1, 2
 PD_P0, PD_P0S, PD_P1, PD_P2 = 0, 1, 2, 3
 RATE_GEN5, RATE_GEN6 = 4, 5
 W_10, W_20, W_40, W_80, W_160 = 0, 1, 2, 3, 4
-FDI_ACTIVE = 1
+# fdi_state_e (pinned encoding — ucie2_pipe7_pkg.sv §C)
+FDI_RESET, FDI_ACTIVE, FDI_L1, FDI_L2 = 0, 1, 2, 3
+FDI_LINKRESET, FDI_LINKERROR, FDI_RETRAIN, FDI_DISABLED = 4, 5, 6, 7
+PIPE_WIDTH = 80        # ucie2_pipe7_bridge PW default (Gen5 128b/130b)
 # msgbus response nibbles (ucie2_pipe7_pkg::msgbus_cmd_e)
 MB_READ_COMPLETION, MB_WRITE_ACK = 0x4, 0x5
 
@@ -77,8 +85,12 @@ class FcovTest(uvm_test):
         await self._ctrl_sweep(dut)
         self.logger.info("[FCOV] phase: msgbus sweep")
         await self._mb_sweep(dut)
-        self.logger.info("[FCOV] phase: FDI Gen5 round-trip")
+        self.logger.info("[FCOV] phase: FDI Gen5 round-trip (CRV: OS/data interleave + backpressure)")
         await self._fdi_roundtrip(dut)
+        self.logger.info("[FCOV] phase: link-state sweep (fdi_state_e)")
+        await self._link_sweep(dut)
+        self.logger.info("[FCOV] phase: RX error injection (sync_error + rx_overflow)")
+        await self._err_inject(dut)
         for _ in range(40):
             await RisingEdge(dut.pclk)
 
@@ -87,6 +99,7 @@ class FcovTest(uvm_test):
 
     # ---- init / harness ----
     def _init(self, dut):
+        self._loop_en = True                 # PHY loopback on unless an inject phase pauses it
         for n in ("lp_data", "lp_valid", "lp_irdy", "lp_is_os", "lp_state_req", "lp_linkerror",
                   "lp_stallack", "lp_rx_active_req", "lp_clk_ack", "lp_wake_req",
                   "req_valid", "req_kind", "req_power_down", "mb_req_valid",
@@ -100,10 +113,13 @@ class FcovTest(uvm_test):
         dut.req_rxwidth.value = W_80
 
     async def _loopback(self, dut):
+        # PHY loopback (tx -> rx). Paused (self._loop_en=False) while an injection
+        # phase drives rx_data/rx_valid directly.
         while True:
             await RisingEdge(dut.pclk)
-            dut.rx_data.value  = _i(dut.tx_data)
-            dut.rx_valid.value = _i(dut.tx_data_valid)
+            if self._loop_en:
+                dut.rx_data.value  = _i(dut.tx_data)
+                dut.rx_valid.value = _i(dut.tx_data_valid)
 
     async def _stall_ack(self, dut):
         while True:
@@ -113,6 +129,7 @@ class FcovTest(uvm_test):
     async def _observe(self, dut):
         while True:
             await RisingEdge(dut.pclk)
+            pl_valid = _i(dut.pl_valid)
             cov.sample_dp({
                 "rate":       _i(dut.rate),
                 "locked":     _i(dut.block_locked),
@@ -120,9 +137,16 @@ class FcovTest(uvm_test):
                 "tx_valid":   _i(dut.tx_data_valid),
             })
             cov.sample_fdi({
-                "pl_valid":    _i(dut.pl_valid),
+                "pl_valid":    pl_valid,
                 "pl_trdy":     _i(dut.pl_trdy),
                 "pl_stallreq": _i(dut.pl_stallreq),
+                # pl_is_os qualifies only with pl_valid; count OS only on a valid flit.
+                "is_os":       _i(dut.pl_is_os) if pl_valid else 0,
+            })
+            cov.sample_link({"state": _i(dut.pl_state_sts)})
+            cov.sample_err({
+                "sync_error":  _i(dut.sync_error),
+                "rx_overflow": _i(dut.rx_overflow),
             })
 
     # ---- control-plane sweep (all kinds / power states / rates / widths + a reject) ----
@@ -214,21 +238,95 @@ class FcovTest(uvm_test):
             await RisingEdge(dut.pclk)
         dut.p2m_message_bus.value = 0
 
-    # ---- FDI Gen5 flit round-trip (populate datapath + FDI-flow bins) ----
+    # ---- FDI Gen5 flit round-trip (CRV: seeded payloads, OS/data interleave, backpressure) ----
     async def _fdi_roundtrip(self, dut):
-        payloads = gv.read_vec(VEC_FILE)
+        # Seeded, reproducible constrained-random stimulus (override with FCOV_SEED).
+        # fcov is a standalone coverage tier, independent of the sacred cross-check
+        # vector, so randomising here is free — it just fills more bins per run.
+        seed = int(os.environ.get("FCOV_SEED", "0xC0FFEE"), 0)
+        rng = random.Random(seed)
+        n = len(gv.read_vec(VEC_FILE))
+        payloads = gv.make_flits("random", n, seed)
         dut.lp_state_req.value = FDI_ACTIVE
         for _ in range(8):
             await RisingEdge(dut.lclk)
-        for data in payloads:
+        for i, data in enumerate(payloads):
+            # Randomised backpressure: an occasional idle bubble before a flit.
+            if rng.random() < 0.2:
+                dut.lp_valid.value = 0
+                dut.lp_irdy.value = 0
+                for _ in range(rng.randint(1, 2)):
+                    await RisingEdge(dut.lclk)
             dut.lp_data.value = data
+            dut.lp_is_os.value = 1 if (i % 4 == 0) else 0   # interleave ordered-set flits
             dut.lp_valid.value = 1
             dut.lp_irdy.value = 1
             await RisingEdge(dut.lclk)
         dut.lp_valid.value = 0
         dut.lp_irdy.value = 0
+        dut.lp_is_os.value = 0
         for _ in range(40):
             await RisingEdge(dut.lclk)
+
+    # ---- FDI link-state sweep (fdi_state_e coverage; the I1 FSM) ----
+    async def _goto_state(self, dut, target, timeout=60):
+        """Request a managed link state and wait until pl_state_sts commits to it."""
+        dut.lp_state_req.value = target
+        for _ in range(timeout):
+            await RisingEdge(dut.lclk)
+            if _i(dut.pl_state_sts) == target:
+                return True
+        return False
+
+    async def _link_sweep(self, dut):
+        # Baseline ACTIVE (the round-trip left us here); _stall_ack drives the handshake.
+        await self._goto_state(dut, FDI_ACTIVE)
+        # Stable managed states reachable via lp_state_req, returning to ACTIVE between.
+        for st in (FDI_L1, FDI_L2, FDI_LINKRESET, FDI_DISABLED):
+            await self._goto_state(dut, st)
+            await self._goto_state(dut, FDI_ACTIVE)
+        # RETRAIN: transient (auto-returns to ACTIVE) — hold the request so the pclk
+        # observer samples the RETRAIN state while it is in flight.
+        dut.lp_state_req.value = FDI_RETRAIN
+        for _ in range(12):
+            await RisingEdge(dut.lclk)
+        await self._goto_state(dut, FDI_ACTIVE)
+        # LINKERROR: sticky on lp_linkerror; cleared by requesting another state.
+        dut.lp_linkerror.value = 1
+        for _ in range(10):
+            await RisingEdge(dut.lclk)
+        dut.lp_linkerror.value = 0
+        await self._goto_state(dut, FDI_ACTIVE)
+
+    # ---- RX error injection: close sync_error=1 + rx_overflow=1 (Phase I I7) ----
+    async def _err_inject(self, dut):
+        # Take over the PIPE RX from the loopback and drive rx_data directly.
+        self._loop_en = False
+        await RisingEdge(dut.pclk)
+        # (a) sync_error + loss of block lock: a run of illegal-sync-header words
+        #     (all-zero -> header 00). The deframer was locked by the loopback.
+        for _ in range(24):
+            dut.rx_valid.value = 1
+            dut.rx_data.value = 0
+            await RisingEdge(dut.pclk)
+        # (b) rx_overflow: re-feed legal blocks while the FDI drain is stalled. With
+        #     the link inactive (RESET) the egress stops draining, so the RX CDC +
+        #     depth-4 burst FIFO fill and overflow (sticky rx_overflow).
+        dut.lp_state_req.value = FDI_RESET
+        words = fm.frame_stream([(0x3333_0000_0000_0000_0000_0000_0000_0000 | i, False)
+                                 for i in range(8)], PIPE_WIDTH)
+        for _ in range(6):
+            for w in words:
+                dut.rx_valid.value = 1
+                dut.rx_data.value = w
+                await RisingEdge(dut.pclk)
+        dut.rx_valid.value = 0
+        dut.rx_data.value = 0
+        for _ in range(10):
+            await RisingEdge(dut.pclk)
+        # Restore the loopback + ACTIVE link for a clean tail.
+        self._loop_en = True
+        await self._goto_state(dut, FDI_ACTIVE)
 
     # ---- report ----
     def _finish(self):
