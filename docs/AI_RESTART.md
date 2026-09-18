@@ -18,7 +18,8 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   metrics/dashboard, waves, CI, Railway + Codespaces remote runners.
 - `make uvm` is the single canonical SV UVM gate (CI + the container run it); you
   can offload it from a laptop with `make uvm-remote [RUNNER=railway|codespace]`.
-- **Phase I in progress. I1 + I2 + I5 + I6 + I3 + I4 DONE — all four FLAGGED items resolved.**
+- **Phase I in progress. I1–I7 DONE — all four FLAGGED items resolved; only I8 remains.**
+  I7: `make fcov` closed to honest 100% (39→53 bins) — seeded CRV + injected error paths.
   I4: UCIe-2.0 management/sideband register-access transport (`ucie2_mgmt_sideband`,
   `make mgmt`; §F un-FLAGged). I1: FDI link FSM (RETRAIN +
   managed states, encoding pinned, `make link-fsm`). I2: FDI `lp_is_os`/`pl_is_os`
@@ -29,7 +30,8 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   (`make flit-cancel`, PW=160; also delivered the deferred rx_overflow injection).
   Each byte-identical in Gen5, verified locally (lint/pyuvm/link-fsm/is-os/err-inject/
   gen6/flit-cancel/mgmt/lint-uvm/formal); full `make uvm`+trace-compare confirmed by CI.
-  **I7 is next** (constrained-random + coverage closure); then I8.
+  I7: `make fcov` closed to honest 100% (39→53 bins) with seeded CRV + error injection.
+  **I8 is next** — the last Phase I item (H3b full-duplex SV UVM + credit seam + B2B trace).
 
 ## Work queue (tick as you go; ▶ = do next)
 
@@ -47,8 +49,11 @@ Detail for each is in `docs/phase_i_design_completion.md`.
   LAST FLAGGED item). New `ucie2_mgmt_sideband` transport serialises register accesses into
   UCIe-2.0 sideband packets against a management regfile; the bridge routes `mb_req_*` by
   address (management space → sideband, else → PIPE msgbus). **All four FLAGGED items resolved.**
-- [ ] ▶ **I7. Constrained-random + coverage closure** (backpressure still deferred here).
-- [ ] **I8. H3b** — full-duplex SV UVM + credit FDI seam + B2B trace gate.
+- [x] **I7. Constrained-random + coverage closure** — done (`make fcov` 39→53 bins,
+  honest 100%; seeded CRV + OS/data interleave + backpressure; closed the sync_error /
+  rx_overflow error bins + is_os + 8-state fdi_state — also lands the deferred
+  rx_overflow/backpressure injection).
+- [ ] ▶ **I8. H3b** — full-duplex SV UVM + credit FDI seam + B2B trace gate.
 
 *(Update the ▶ marker and check boxes here in the same PR that lands each item.)*
 

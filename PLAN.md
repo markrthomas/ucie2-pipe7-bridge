@@ -478,8 +478,15 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
   covering **both** Gen6 end-to-end and the live **Gen5→Gen6 rate switch**. (Active
   `rx_overflow`/backpressure injection still needs a pclk/lclk rate mismatch not
   present here — carried into I7.)
-- [ ] **I7. Constrained-random expansion + functional-coverage closure** (rest of
-  G21+).
+- [x] **I7. Constrained-random expansion + functional-coverage closure** — DONE. The
+  `make fcov` driver gained seeded constrained-random stimulus (reproducible via
+  `FCOV_SEED`): random payloads, OS/data flit-type interleave, and randomised FDI
+  backpressure bubbles. New coverage points close the previously-FLAGGED error bins
+  (`sync_error=1` via illegal PIPE-RX headers, `rx_overflow=1` via an RX-drain stall
+  that overflows the burst FIFO) plus `is_os` flit-type and the full 8-state
+  `fdi_state_e` link space. Functional coverage rises **39→53 bins, honest 100%**
+  (error paths now included); this also lands the `rx_overflow`/backpressure injection
+  deferred from I5/I6.
 - [ ] **I8. H3b** — full-duplex SV UVM tier + credit-based FDI seam + B2B
   trace-compare gate.
 

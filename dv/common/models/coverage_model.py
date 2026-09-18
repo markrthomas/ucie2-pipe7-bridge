@@ -10,16 +10,19 @@ simulator, a different testbench, a different coverage tool, and a different met
 The bin set is derived from the frozen (Item 0) interface encoding space
 (``rtl/ucie2_pipe7_pkg.sv``): control-plane PowerDown P0/P0s/P1/P2, Rate Gen5/Gen6,
 Width W_10..W_160, request kind/outcome/busy; message-bus opcode/is_read/committed;
-observed datapath rate/lock/data-phase/tx-valid; and observed FDI flow control
-(pl_valid / pl_trdy / pl_stallreq). Every bin is reachable from ``ucie2_pipe7_bridge``
-driven through its management + FDI ports with a clean PHY loopback -- there are
-deliberately no cross bins with structurally-unreachable cells, so the target is an
-honest 100% of the set. Sampling is done from Python monitors that read the DUT
-handles -- no RTL involvement.
+observed datapath rate/lock/data-phase/tx-valid; observed FDI flow control
+(pl_valid / pl_trdy / pl_stallreq) and flit-type (pl_is_os); the recovered FDI
+link-state space (``fdi_state_e``, all 8 states); and the two error-status flags
+(sync_error, rx_overflow). Every bin is reachable from ``ucie2_pipe7_bridge`` driven
+through its management + FDI + PIPE-RX ports -- there are deliberately no cross bins
+with structurally-unreachable cells, so the target is an honest 100% of the set.
+Sampling is done from Python monitors that read the DUT handles -- no RTL involvement.
 
-FLAGGED follow-up (Phase F): the two error-status bins sync_error=1 and rx_overflow=1
-need a cocotb-only RX-inject / sink-stall wrapper (as the predecessor's item 45 added);
-they are intentionally NOT part of this honest-100% loopback set yet.
+Phase I I7 closed the two error-status bins (sync_error=1, rx_overflow=1) that were
+previously FLAGGED as loopback-unreachable: the fcov driver now injects illegal
+PIPE-RX sync headers (loss of block lock) and stalls the RX drain to overflow the
+burst FIFO, and adds the is_os flit-type + full fdi_state link-state coverage. The
+set is honest-100% again, error paths included.
 """
 import json
 
@@ -30,6 +33,9 @@ RATE_GEN5, RATE_GEN6 = 4, 5
 PD_BINS    = [0, 1, 2, 3]                 # P0, P0s, P1, P2
 WIDTH_BINS = [0, 1, 2, 3, 4]             # W_10, W_20, W_40, W_80, W_160
 KIND_BINS  = [0, 1, 2]                   # REQ_POWER, REQ_RATE, REQ_WIDTH
+STATE_BINS = [0, 1, 2, 3, 4, 5, 6, 7]   # fdi_state_e RESET..DISABLED (pinned encoding)
+STATE_LABELS = ["RESET", "ACTIVE", "L1", "L2", "LINKRESET", "LINKERROR",
+                "RETRAIN", "DISABLED"]
 
 # The exact CoverPoint names this model owns (so the overall % never double-counts the
 # hierarchical parent nodes cocotb_coverage also stores in coverage_db).
@@ -40,6 +46,9 @@ POINTS = [
     "bridge.dp.rate_obs", "bridge.dp.block_locked", "bridge.dp.in_data_phase",
     "bridge.dp.tx_valid",
     "bridge.fdi.pl_valid", "bridge.fdi.pl_trdy", "bridge.fdi.pl_stallreq",
+    "bridge.fdi.is_os",
+    "bridge.link.state",
+    "bridge.err.sync_error", "bridge.err.rx_overflow",
 ]
 
 
@@ -83,8 +92,26 @@ def sample_dp(s):
 @CoverPoint("bridge.fdi.pl_valid", xf=lambda s: s["pl_valid"], bins=[0, 1])
 @CoverPoint("bridge.fdi.pl_trdy", xf=lambda s: s["pl_trdy"], bins=[0, 1])
 @CoverPoint("bridge.fdi.pl_stallreq", xf=lambda s: s["pl_stallreq"], bins=[0, 1])
+@CoverPoint("bridge.fdi.is_os", xf=lambda s: s.get("is_os", 0), bins=[0, 1],
+            bins_labels=["data", "OS"])
 def sample_fdi(s):
-    """s = {pl_valid(0|1), pl_trdy(0|1), pl_stallreq(0|1)}."""
+    """s = {pl_valid(0|1), pl_trdy(0|1), pl_stallreq(0|1), is_os(0|1, optional)}."""
+    pass
+
+
+# ---- FDI recovered link state (fdi_state_e; Phase I I1) ------------------------------------
+@CoverPoint("bridge.link.state", xf=lambda s: s["state"], bins=STATE_BINS,
+            bins_labels=STATE_LABELS)
+def sample_link(s):
+    """s = {state(0..7 = fdi_state_e)} -- the committed pl_state_sts."""
+    pass
+
+
+# ---- error-status flags (Phase I I5/I3; closed by I7 injection) ----------------------------
+@CoverPoint("bridge.err.sync_error", xf=lambda s: s["sync_error"], bins=[0, 1])
+@CoverPoint("bridge.err.rx_overflow", xf=lambda s: s["rx_overflow"], bins=[0, 1])
+def sample_err(s):
+    """s = {sync_error(0|1), rx_overflow(0|1)}."""
     pass
 
 
