@@ -157,7 +157,15 @@ design may silently diverge from UCIe 2.0.
     bridges lock, no sync_error). Wired: `lint-b2b-ucie-fd` + `run-b2b-ucie-fd` in the
     vlt Makefile (fanned into `lint-b2b`/`run-b2b`, so `lint-b2b-uvm`/`uvm-b2b` + CI
     pick it up). Lint-elaborates locally; `--binary` run gated in CI.
-  - **I8b — open.** Full-duplex SV UVM **PCIe** tier (mirror `test_b2b_pcie_fd`).
+  - **I8b — DONE.** Full-duplex SV UVM **PCIe** tier: new `b2b_pcie_fd_if`, a *sided*
+    driver (`is_b`, injects A or B PIPE RX) + monitor (`fwd`, recovers the far PIPE TX
+    and tracks that direction's deframer health), a dual-direction scoreboard,
+    `b2b_pcie_fd_uvm_pkg` + `tb_b2b_pcie_fd`, on the existing `b2b_pcie_ucie_pcie_fd`
+    harness. Mirrors the green PyUVM `test_b2b_pcie_fd` (forward A→B + reverse B→A each
+    re-frame the shared pre-framed word vector; both bridges lock, no sync_error). Wired:
+    `lint-b2b-pcie-fd` + `run-b2b-pcie-fd` in the vlt Makefile (fanned into
+    `lint-b2b`/`run-b2b`, so `lint-b2b-uvm`/`uvm-b2b` + CI pick it up). Lint-elaborates
+    locally; `--binary` run gated in CI.
   - **I8c — open.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM per-cycle,
     both full-duplex tiers) — the deferred H3 byte-identical B2B trace.
   - **I8d — open.** Credit-based FDI seam, if long-burst flow control needs it (the
