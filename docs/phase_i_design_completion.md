@@ -179,8 +179,27 @@ design may silently diverge from UCIe 2.0.
     GATING; traces uploaded as artifacts). No RTL, no sacred single-bridge emitter, and
     no `bridge.trace` touched (distinct filenames). PyUVM traces well-formed + lint-clean
     locally; the byte-identical diff runs in CI (SV `--binary`).
-  - **I8d — open.** Credit-based FDI seam, if long-burst flow control needs it (the
-    current ready/valid FDI-TX backpressure holds for the vector-length bursts today).
+  - **I8d — DONE (no new RTL; premise evaluated to false, with evidence).** The item was
+    conditional: "credit-based FDI seam, *if* long-burst flow control needs it." It does
+    not. Analysis:
+    - **The seam is rate-matched.** In every B2B config both bridges share one synchronous
+      2 ns clock; FDI egress has no backpressure and drains 1 block/PCLK
+      (`ucie2_fdi_egress.sv`), which is exactly the `pipe7_rx_burst_fifo.sv` no-overflow
+      envelope (≤ 1 recovered block/PCLK on average; the FIFO only absorbs the transient
+      0/1/2-block gearbox burst). So a sustained stream never builds up.
+    - **A credit seam would contradict the frozen contract.** "RX has NO backpressure" is
+      crosscheck **B** — a frozen FDI boundary decision. Credits exist precisely to let the
+      far end stall the source; adding them would reverse crosscheck B, so I8d is not a
+      gap to fill but a design choice already made the other way.
+    - **The only overflow path is a fault, already handled.** RX FIFO overflow is reachable
+      only under injected fault (I5/I3), and it is retracted by `pl_flit_cancel` (I3) +
+      surfaced by sticky `rx_overflow` — recovery, not prevention, by design.
+    - **Evidence + standing guard:** `make b2b-longburst` (new) drives a burst 32× the
+      default (LONGBURST_LEN=256 flits) through BOTH full-duplex tiers and asserts full
+      recovery in both directions + no sync_error. Verified locally (UCIe-fd
+      driven=256/fwd=256/rev=256; PCIe-fd words=416/fwd=416/rev=416) and wired GATING into
+      CI after the default-vector gates (it regenerates the vector at LONGBURST_LEN).
+    This closes **I8**, **H3b**, and **Phase I — design completion**.
 
 ---
 

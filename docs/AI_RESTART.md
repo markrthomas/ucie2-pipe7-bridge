@@ -11,14 +11,14 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
 
 ---
 
-## Current state (as of 2026-09-16)
+## Current state (as of 2026-09-19)
 
 - Env is complete and **green**: RTL datapath (Gen5 proven end-to-end), two
   cycle-accurate TBs (PyUVM + SV UVM), `trace_compare`, coverage, formal,
   metrics/dashboard, waves, CI, Railway + Codespaces remote runners.
 - `make uvm` is the single canonical SV UVM gate (CI + the container run it); you
   can offload it from a laptop with `make uvm-remote [RUNNER=railway|codespace]`.
-- **Phase I in progress. I1–I7 DONE — all four FLAGGED items resolved; only I8 remains.**
+- **Phase I COMPLETE. I1–I9 all landed — all four FLAGGED items resolved; I8/H3b closed.**
   I7: `make fcov` closed to honest 100% (39→53 bins) — seeded CRV + injected error paths.
   I4: UCIe-2.0 management/sideband register-access transport (`ucie2_mgmt_sideband`,
   `make mgmt`; §F un-FLAGged). I1: FDI link FSM (RETRAIN +
@@ -31,12 +31,15 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   Each byte-identical in Gen5, verified locally (lint/pyuvm/link-fsm/is-os/err-inject/
   gen6/flit-cancel/mgmt/lint-uvm/formal); full `make uvm`+trace-compare confirmed by CI.
   I7: `make fcov` closed to honest 100% (39→53 bins) with seeded CRV + error injection.
-  **I8 (last item) in progress, staged I8a–I8d.** I8a+I8b+I8c done: full-duplex SV UVM
-  UCIe (`tb_b2b_ucie_fd`) and PCIe (`tb_b2b_pcie_fd`) tiers, mirroring PyUVM
-  `test_b2b_ucie_fd` / `test_b2b_pcie_fd`; both in `uvm-b2b`+CI. I8c: byte-identical B2B
-  trace-compare gate — both fd TBs emit the shared `b2b_trace_format` per-cycle boundary
-  trace and `make trace-compare-b2b` diffs PyUVM vs SV-UVM per tier (CI-gating; SV
-  `--binary` runs in CI). Next: I8d (credit FDI seam if long-burst flow control needs it).
+  **I8 DONE — Phase I complete (I1–I9 all landed).** I8a+I8b: full-duplex SV UVM UCIe
+  (`tb_b2b_ucie_fd`) and PCIe (`tb_b2b_pcie_fd`) tiers, mirroring PyUVM `test_b2b_ucie_fd`
+  / `test_b2b_pcie_fd`; both in `uvm-b2b`+CI. I8c: byte-identical B2B trace-compare gate —
+  both fd TBs emit the shared `b2b_trace_format` per-cycle boundary trace and
+  `make trace-compare-b2b` diffs PyUVM vs SV-UVM per tier (CI-gating). I8d: the conditional
+  credit FDI seam is **not needed** — the seam is rate-matched and RX-no-backpressure is a
+  frozen crosscheck-B decision, so credits would contradict the contract; `make b2b-longburst`
+  (32×-default burst through both fd tiers, full recovery + no sync_error) is the standing
+  CI guard. All four FLAGGED contract items resolved; `ucie2_pipe7_pkg.sv` stays frozen.
 
 ## Work queue (tick as you go; ▶ = do next)
 
@@ -58,7 +61,7 @@ Detail for each is in `docs/phase_i_design_completion.md`.
   honest 100%; seeded CRV + OS/data interleave + backpressure; closed the sync_error /
   rx_overflow error bins + is_os + 8-state fdi_state — also lands the deferred
   rx_overflow/backpressure injection).
-- [ ] ▶ **I8. H3b** — full-duplex SV UVM + credit FDI seam + B2B trace gate. *(staged)*
+- [x] **I8. H3b** — full-duplex SV UVM + B2B trace gate + long-burst seam proof. *(done)*
   - [x] **I8a.** Full-duplex SV UVM **UCIe** tier — `dv/uvm/sv/b2b/*_fd_*` (sided driver/
     monitor, dual-direction scoreboard, `tb_b2b_ucie_fd`) mirroring the green PyUVM
     `test_b2b_ucie_fd`; wired into `run-b2b`/`uvm-b2b` + CI. Lint-clean locally; `--binary`
@@ -71,7 +74,10 @@ Detail for each is in `docs/phase_i_design_completion.md`.
     `dv/common/models/b2b_trace_format` per-cycle boundary trace (both bridges' outputs);
     `make trace-compare-b2b` diffs PyUVM vs SV-UVM per tier (CI-gating). Lint-clean +
     PyUVM traces verified locally; the byte-identical diff runs in CI (`--binary` SV UVM).
-  - [ ] **I8d.** Credit-based FDI seam (if long-burst flow control needs it).
+  - [x] **I8d.** Credit-based FDI seam (if long-burst flow control needs it) — **not needed
+    (premise false, evidenced).** Rate-matched seam + frozen crosscheck-B RX-no-backpressure
+    ⇒ credits would contradict the contract; overflow is a fault path retracted by I3.
+    `make b2b-longburst` (32×-default burst, full recovery both directions) is the CI guard.
 
 *(Update the ▶ marker and check boxes here in the same PR that lands each item.)*
 

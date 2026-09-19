@@ -508,7 +508,14 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
     diffs PyUVM vs SV-UVM per tier (CI-gating after `make b2b`/`uvm-b2b`). No RTL / no
     sacred single-bridge emitter touched. PyUVM traces + lint verified locally; the
     byte-identical diff runs in CI (SV `--binary`).
-  - [ ] **I8d.** Credit-based FDI seam (if long-burst flow control needs it).
+  - [x] **I8d.** Credit-based FDI seam (if long-burst flow control needs it) — **not needed
+    (premise false, with evidence).** The FDI seam is rate-matched (both domains one
+    synchronous 2 ns clock; egress drains 1 block/PCLK, inside the RX burst FIFO's no-
+    overflow envelope) and RX-no-backpressure is a frozen crosscheck-B decision, so a
+    credit seam would contradict the contract; the only overflow path is a fault, retracted
+    by `pl_flit_cancel` (I3). `make b2b-longburst` drives a 32×-default burst through both
+    fd tiers (full recovery both directions, no sync_error) as the standing guard — GATING
+    in CI. Closes I8 / H3b / Phase I. See `docs/phase_i_design_completion.md` I8d.
 
 ## 8. Per-commit green gate
 

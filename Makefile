@@ -95,7 +95,7 @@ else
 endif
 
 .PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os err-inject gen6 flit-cancel mgmt b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
-        lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare trace-compare-b2b coverage formal \
+        lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare trace-compare-b2b b2b-longburst coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
@@ -132,6 +132,9 @@ help:
 	@echo "                     (b2b-ucie: UCIe==PCIe link==UCIe; b2b-pcie: PCIe==UCIe"
 	@echo "                      link==PCIe. Two ucie2_pipe7_bridge joined by a"
 	@echo "                      dv/harness wrapper; shares LEN/SEED/PROFILE knobs.)"
+	@echo "  make b2b-longburst long-burst FDI-seam flow-control proof (I8d) [local]"
+	@echo "                     (both fd tiers at LONGBURST_LEN flits, default 256;"
+	@echo "                      proves the ready/valid seam holds with no credit seam)"
 	@echo "  make lint-uvm      elaborate-only lint of the SV UVM env       [local]"
 	@echo "  (lint/pyuvm/fcov/lint-uvm/coverage auto-detect this oss-cad box and run"
 	@echo "   a clean local env; append -ci — e.g. 'make fcov-ci' — or LOCAL=0 to force"
@@ -351,6 +354,27 @@ b2b-pcie-fd: gen-vectors
 	  SIM_BUILD=$(abspath dv/pyuvm/b2b_pcie_fd_build)
 
 b2b: b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd
+
+# ---- I8d: long-burst FDI-seam flow-control proof ----------------------------
+# Drives a burst far longer than the default vector (LONGBURST_LEN flits, 32x the
+# default) through BOTH full-duplex B2B tiers and asserts full recovery
+# (recovered == driven, both directions) + no sync_error. This is the standing
+# evidence that the ready/valid FDI-TX seam holds under long bursts WITHOUT a
+# credit mechanism, so I8d needs no new RTL:
+#   * the seam is rate-matched -- both domains share one synchronous 2 ns clock and
+#     FDI egress drains 1 block/PCLK, inside the RX burst FIFO's <=1-block/PCLK
+#     no-overflow envelope (see pipe7_rx_burst_fifo.sv);
+#   * RX has no backpressure by contract (crosscheck B) -- the far end never stalls
+#     the source, which is exactly what a credit seam would add, so credits would
+#     CONTRADICT the frozen FDI contract; and
+#   * the only overflow path is a fault (I5/I3 injection), retracted by
+#     pl_flit_cancel (I3), not a flow-control gap.
+# Regenerates the shared vector at LONGBURST_LEN, so run it AFTER the default-vector
+# gates. See docs/phase_i_design_completion.md I8d.
+LONGBURST_LEN ?= 256
+b2b-longburst:
+	$(MAKE) b2b-ucie-fd LEN=$(LONGBURST_LEN)
+	$(MAKE) b2b-pcie-fd LEN=$(LONGBURST_LEN)
 
 # ---- B2B SV UVM tier: elaborate-only locally, full --binary run in CI ---------
 # Same split as the single-bridge UVM tier: `lint-b2b-uvm` elaborates both B2B
