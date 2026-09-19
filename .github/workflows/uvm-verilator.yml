@@ -121,6 +121,16 @@ jobs:
       - name: B2B full-duplex cross-check (PyUVM trace == UVM trace, make trace-compare-b2b)
         run: make trace-compare-b2b
 
+      # Long-burst FDI-seam flow-control proof (Phase I I8d). Drives a burst 32x the
+      # default through both full-duplex B2B tiers (PyUVM) and asserts full recovery
+      # both directions + no sync_error: the standing evidence that the ready/valid
+      # FDI-TX seam holds under long bursts with NO credit mechanism. GATING.
+      # REGENERATES the shared vector at LONGBURST_LEN, so it runs AFTER every step
+      # above that reads the default-length vector (uvm, pyuvm, the directed Phase I
+      # tests, both trace-compares, make b2b, make uvm-b2b).
+      - name: B2B long-burst FDI-seam flow-control proof (make b2b-longburst)
+        run: make b2b-longburst
+
       - name: Upload traces + UVM log
         if: always()
         uses: actions/upload-artifact@v4
