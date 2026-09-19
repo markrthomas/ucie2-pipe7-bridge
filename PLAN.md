@@ -495,7 +495,13 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
     `test_b2b_ucie_fd`. Both directions round-trip the shared vector; both bridges lock,
     no sync_error. Wired into `run-b2b` / `uvm-b2b` + CI (the `--binary` run happens in
     CI; lint-elaborates locally via `lint-b2b-uvm`).
-  - [ ] **I8b.** Full-duplex SV UVM **PCIe** tier (mirror `test_b2b_pcie_fd`).
+  - [x] **I8b.** Full-duplex SV UVM **PCIe** tier — new `dv/uvm/sv/b2b/b2b_pcie_fd_*`
+    (a sided PIPE-RX driver + far-TX/deframer-health monitor, a dual-direction
+    scoreboard, `tb_b2b_pcie_fd`) on the existing `b2b_pcie_ucie_pcie_fd` harness,
+    mirroring the green PyUVM `test_b2b_pcie_fd`. Both directions re-frame the shared
+    pre-framed word vector; both bridges lock, no sync_error. Wired into `run-b2b` /
+    `uvm-b2b` + CI (the `--binary` run happens in CI; lint-elaborates locally via
+    `lint-b2b-uvm`).
   - [ ] **I8c.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM, both fd tiers).
   - [ ] **I8d.** Credit-based FDI seam (if long-burst flow control needs it).
 
