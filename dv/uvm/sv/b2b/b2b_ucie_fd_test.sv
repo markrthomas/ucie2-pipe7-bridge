@@ -69,6 +69,20 @@ class b2b_ucie_fd_test extends uvm_test;
 
     wait (vif.pclk_rst_n === 1'b1 && vif.lclk_rst_n === 1'b1);
 
+    // Cycle 0 sampled BEFORE the forked tasks start -- same ordering trick as the
+    // sacred single-bridge emitter. In cocotb the stall_ack/drive responders are
+    // start_soon'd before the trace loop, so cycle 0 sees reset-state inputs (both
+    // pl_stallreq==0). Forking here (at the cycle-0 edge) would instead let
+    // stall_ack drive lp_stallack into the #0.1 window and read pl_stallreq==1 at
+    // cycle 0, diverging from PyUVM. The PCIe full-duplex tier needs no such trick
+    // (its drivers feed only rx_data, with no responder gating an output).
+    @(posedge vif.pclk); #0.1;
+    $fwrite(fd, "%0d,%0d,%h,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d,%0d,%0d,%0d\n",
+      0, vif.a_pl_valid, vif.a_pl_data, vif.a_pl_trdy, vif.a_pl_stallreq,
+         vif.a_pl_state_sts, vif.a_block_locked, vif.a_sync_error,
+         vif.b_pl_valid, vif.b_pl_data, vif.b_pl_trdy, vif.b_pl_stallreq,
+         vif.b_pl_state_sts, vif.b_block_locked, vif.b_sync_error);
+
     seq_a = fdi_flit_seq::type_id::create("seq_a");
     seq_b = fdi_flit_seq::type_id::create("seq_b");
     fork
@@ -79,7 +93,7 @@ class b2b_ucie_fd_test extends uvm_test;
       seq_b.start(seqr_b);
     join_none
 
-    for (int cyc = 0; cyc < run_pclk; cyc++) begin
+    for (int cyc = 1; cyc < run_pclk; cyc++) begin
       @(posedge vif.pclk); #0.1;
       $fwrite(fd, "%0d,%0d,%h,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d,%0d,%0d,%0d\n",
         cyc, vif.a_pl_valid, vif.a_pl_data, vif.a_pl_trdy, vif.a_pl_stallreq,
