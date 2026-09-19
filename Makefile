@@ -95,7 +95,7 @@ else
 endif
 
 .PHONY: default help tools tools-check lint pyuvm fcov link-fsm is-os err-inject gen6 flit-cancel mgmt b2b b2b-ucie b2b-pcie b2b-ucie-fd b2b-pcie-fd \
-        lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare coverage formal \
+        lint-b2b-uvm uvm-b2b lint-uvm uvm trace-compare trace-compare-b2b coverage formal \
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
@@ -139,6 +139,7 @@ help:
 	@echo "  make uvm           full SV UVM gate: vectors+lint+--binary run [CI/Railway]"
 	@echo "                     (the canonical target the container entrypoint runs)"
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
+	@echo "  make trace-compare-b2b  full-duplex B2B PyUVM==UVM trace diff  [CI/Railway]"
 	@echo "  make coverage      RTL line coverage of the directed round-trip [local; post-gate]"
 	@echo "                     (Verilator --coverage-line; prints [COV] line=NN.N%"
 	@echo "                      plus an informational [COV] branch=NN.N%;"
@@ -392,6 +393,22 @@ trace-compare:
 	$(PYTHON) tools/trace_compare.py \
 	  --pyuvm dv/pyuvm/build/bridge.trace \
 	  --uvm   dv/uvm/vlt/obj/bridge.trace
+
+# ---- Full-duplex B2B cycle-accurate cross-check (Phase I I8c) ----------------
+# The two-bridge full-duplex twin of `trace-compare`. Each fd tier's two
+# independently-authored TBs -- PyUVM (`make b2b-{ucie,pcie}-fd`, writes
+# dv/pyuvm/build/b2b_*_fd.trace) and SV UVM (`make uvm-b2b`, writes the same
+# per-cycle boundary trace under dv/uvm/vlt/obj/b2b_*_fd/) -- emit the shared
+# b2b_trace_format columns; this diffs them per tier and fails on the first
+# divergent cycle. CI/Railway only: it needs the SV UVM --binary run, which does
+# not run on this host. Run AFTER `make b2b` and `make uvm-b2b` so both traces exist.
+trace-compare-b2b:
+	$(PYTHON) tools/trace_compare.py \
+	  --pyuvm dv/pyuvm/build/b2b_ucie_fd.trace \
+	  --uvm   dv/uvm/vlt/obj/b2b_ucie_fd/b2b_ucie_fd.trace
+	$(PYTHON) tools/trace_compare.py \
+	  --pyuvm dv/pyuvm/build/b2b_pcie_fd.trace \
+	  --uvm   dv/uvm/vlt/obj/b2b_pcie_fd/b2b_pcie_fd.trace
 
 # ---- RTL line coverage (Phase F increment 2) --------------------------------
 # ADDITIVE and OUTSIDE the gate: never run inside/alongside lint/pyuvm/fcov/uvm/

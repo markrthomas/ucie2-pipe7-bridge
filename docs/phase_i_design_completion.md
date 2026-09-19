@@ -166,8 +166,19 @@ design may silently diverge from UCIe 2.0.
     `lint-b2b-pcie-fd` + `run-b2b-pcie-fd` in the vlt Makefile (fanned into
     `lint-b2b`/`run-b2b`, so `lint-b2b-uvm`/`uvm-b2b` + CI pick it up). Lint-elaborates
     locally; `--binary` run gated in CI.
-  - **I8c — open.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM per-cycle,
-    both full-duplex tiers) — the deferred H3 byte-identical B2B trace.
+  - **I8c — DONE.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM per-cycle,
+    both full-duplex tiers) — the deferred H3 byte-identical B2B trace. New shared column
+    contract `dv/common/models/b2b_trace_format.py` (`PCIE_FD_COLUMNS`: both bridges'
+    PIPE TX outputs + lock/error; `UCIE_FD_COLUMNS`: both bridges' recovered FDI RX
+    outputs + FDI handshake/status). Both full-duplex TBs now emit one line per PCLK of
+    **both** bridges' observable outputs, sampled on the coincident 2 ns edge (PyUVM
+    post-edge reads == SV `#0.1`): PyUVM `test_b2b_{ucie,pcie}_fd.py` write
+    `dv/pyuvm/build/b2b_*_fd.trace`; the SV UVM `b2b_{ucie,pcie}_fd_test.sv` write via
+    `+B2B_TRACE=<path>` under `dv/uvm/vlt/obj/b2b_*_fd/`. `make trace-compare-b2b` runs
+    `tools/trace_compare.py` per tier (added to CI after `make b2b`/`make uvm-b2b`,
+    GATING; traces uploaded as artifacts). No RTL, no sacred single-bridge emitter, and
+    no `bridge.trace` touched (distinct filenames). PyUVM traces well-formed + lint-clean
+    locally; the byte-identical diff runs in CI (SV `--binary`).
   - **I8d — open.** Credit-based FDI seam, if long-burst flow control needs it (the
     current ready/valid FDI-TX backpressure holds for the vector-length bursts today).
 

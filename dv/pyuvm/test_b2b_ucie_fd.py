@@ -15,10 +15,12 @@ from cocotb.triggers import RisingEdge, Timer
 import pyuvm
 from pyuvm import uvm_test
 
+import b2b_trace_format as btf
 import gen_vectors as gv
 from agents.fdi_agent import _i
 
 FDI_ACTIVE   = 1
+FDI_WIDTH    = 128
 BRINGUP_LCLK = 8
 RUN_PCLK = int(os.environ.get("RUN_PCLK", "200"))
 VEC_FILE = os.environ.get("VEC") or os.path.join(
@@ -53,8 +55,34 @@ class B2bUcieFdTest(uvm_test):
         cocotb.start_soon(self._drive(dut, "a"))      # forward drives into A
         cocotb.start_soon(self._drive(dut, "b"))      # reverse drives into B
 
-        for _ in range(RUN_PCLK):
-            await RisingEdge(dut.pclk)
+        # Canonical per-cycle B2B trace (Phase I I8c): both bridges' recovered FDI
+        # RX outputs + FDI handshake/status, sampled post-edge on the coincident
+        # pclk (lclk is coincident). The SV UVM b2b_ucie_fd_test emits the same
+        # columns so trace_compare holds the two full-duplex TBs in cycle-lockstep.
+        # Distinct filename from the sacred single-bridge bridge.trace.
+        os.makedirs("build", exist_ok=True)
+        cols = btf.UCIE_FD_COLUMNS
+        with open("build/b2b_ucie_fd.trace", "w") as f:
+            f.write(btf.header(cols) + "\n")
+            for cyc in range(RUN_PCLK):
+                await RisingEdge(dut.pclk)
+                row = {
+                    "a_pl_valid":     _i(dut.a_pl_valid),
+                    "a_pl_data":      _i(dut.a_pl_data),
+                    "a_pl_trdy":      _i(dut.a_pl_trdy),
+                    "a_pl_stallreq":  _i(dut.a_pl_stallreq),
+                    "a_pl_state_sts": _i(dut.a_pl_state_sts),
+                    "a_block_locked": _i(dut.a_block_locked),
+                    "a_sync_error":   _i(dut.a_sync_error),
+                    "b_pl_valid":     _i(dut.b_pl_valid),
+                    "b_pl_data":      _i(dut.b_pl_data),
+                    "b_pl_trdy":      _i(dut.b_pl_trdy),
+                    "b_pl_stallreq":  _i(dut.b_pl_stallreq),
+                    "b_pl_state_sts": _i(dut.b_pl_state_sts),
+                    "b_block_locked": _i(dut.b_block_locked),
+                    "b_sync_error":   _i(dut.b_sync_error),
+                }
+                f.write(btf.format_row(cols, cyc, row, fdi_width=FDI_WIDTH) + "\n")
         self.drop_objection()
         self._check(fwd, rev)
 
