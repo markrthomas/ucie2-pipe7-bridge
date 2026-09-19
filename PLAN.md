@@ -502,7 +502,12 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
     pre-framed word vector; both bridges lock, no sync_error. Wired into `run-b2b` /
     `uvm-b2b` + CI (the `--binary` run happens in CI; lint-elaborates locally via
     `lint-b2b-uvm`).
-  - [ ] **I8c.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM, both fd tiers).
+  - [x] **I8c.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM, both fd tiers) —
+    shared column contract `dv/common/models/b2b_trace_format.py`; both full-duplex TBs
+    emit one per-PCLK line of both bridges' observable outputs; `make trace-compare-b2b`
+    diffs PyUVM vs SV-UVM per tier (CI-gating after `make b2b`/`uvm-b2b`). No RTL / no
+    sacred single-bridge emitter touched. PyUVM traces + lint verified locally; the
+    byte-identical diff runs in CI (SV `--binary`).
   - [ ] **I8d.** Credit-based FDI seam (if long-burst flow control needs it).
 
 ## 8. Per-commit green gate

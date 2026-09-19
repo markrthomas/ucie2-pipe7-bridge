@@ -5,9 +5,14 @@
 //   forward driver -> A, recovered at B;  reverse driver -> B, recovered at A.
 // Each direction drives the shared FDI flit vector (+VEC/+N_FLITS) and both
 // recovered streams must equal it, with both bridges locked and no sync_error.
-// Mirrors dv/pyuvm/test_b2b_ucie_fd.py. Scoreboard-only (byte-identical B2B trace
-// gate is a later I8 increment). Timing tasks are forked after reset deassert.
-// Run length: +RUN_PCLK (default RUN_PCLK localparam).
+// Mirrors dv/pyuvm/test_b2b_ucie_fd.py. Timing tasks are forked after reset
+// deassert. Run length: +RUN_PCLK (default RUN_PCLK localparam).
+//
+// Phase I I8c: emits the canonical per-cycle B2B trace (+B2B_TRACE=<path>) of both
+// bridges' recovered FDI RX outputs + FDI handshake/status, sampled #0.1 post-edge
+// on the coincident pclk. Columns/format mirror b2b_trace_format.UCIE_FD_COLUMNS so
+// tools/trace_compare.py (make trace-compare-b2b) holds this env cycle-for-cycle
+// against the PyUVM full-duplex TB.
 // -----------------------------------------------------------------------------
 class b2b_ucie_fd_test extends uvm_test;
   `uvm_component_utils(b2b_ucie_fd_test)
@@ -52,11 +57,31 @@ class b2b_ucie_fd_test extends uvm_test;
 
   task run_phase(uvm_phase phase);
     int unsigned run_pclk;
+    int          fd;
+    string       path;
     fdi_flit_seq seq_a, seq_b;
     phase.raise_objection(this);
     if (!$value$plusargs("RUN_PCLK=%d", run_pclk)) run_pclk = RUN_PCLK;
+    if (!$value$plusargs("B2B_TRACE=%s", path))    path = "b2b_ucie_fd.trace";
+    fd = $fopen(path, "w");
+    if (fd == 0) `uvm_fatal("B2BUFD", $sformatf("cannot open %s", path));
+    $fwrite(fd, "cycle,a_pl_valid,a_pl_data,a_pl_trdy,a_pl_stallreq,a_pl_state_sts,a_block_locked,a_sync_error,b_pl_valid,b_pl_data,b_pl_trdy,b_pl_stallreq,b_pl_state_sts,b_block_locked,b_sync_error\n");
 
     wait (vif.pclk_rst_n === 1'b1 && vif.lclk_rst_n === 1'b1);
+
+    // Cycle 0 sampled BEFORE the forked tasks start -- same ordering trick as the
+    // sacred single-bridge emitter. In cocotb the stall_ack/drive responders are
+    // start_soon'd before the trace loop, so cycle 0 sees reset-state inputs (both
+    // pl_stallreq==0). Forking here (at the cycle-0 edge) would instead let
+    // stall_ack drive lp_stallack into the #0.1 window and read pl_stallreq==1 at
+    // cycle 0, diverging from PyUVM. The PCIe full-duplex tier needs no such trick
+    // (its drivers feed only rx_data, with no responder gating an output).
+    @(posedge vif.pclk); #0.1;
+    $fwrite(fd, "%0d,%0d,%h,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d,%0d,%0d,%0d\n",
+      0, vif.a_pl_valid, vif.a_pl_data, vif.a_pl_trdy, vif.a_pl_stallreq,
+         vif.a_pl_state_sts, vif.a_block_locked, vif.a_sync_error,
+         vif.b_pl_valid, vif.b_pl_data, vif.b_pl_trdy, vif.b_pl_stallreq,
+         vif.b_pl_state_sts, vif.b_block_locked, vif.b_sync_error);
 
     seq_a = fdi_flit_seq::type_id::create("seq_a");
     seq_b = fdi_flit_seq::type_id::create("seq_b");
@@ -68,7 +93,15 @@ class b2b_ucie_fd_test extends uvm_test;
       seq_b.start(seqr_b);
     join_none
 
-    repeat (run_pclk) @(posedge vif.pclk);
+    for (int cyc = 1; cyc < run_pclk; cyc++) begin
+      @(posedge vif.pclk); #0.1;
+      $fwrite(fd, "%0d,%0d,%h,%0d,%0d,%0d,%0d,%0d,%0d,%h,%0d,%0d,%0d,%0d,%0d\n",
+        cyc, vif.a_pl_valid, vif.a_pl_data, vif.a_pl_trdy, vif.a_pl_stallreq,
+             vif.a_pl_state_sts, vif.a_block_locked, vif.a_sync_error,
+             vif.b_pl_valid, vif.b_pl_data, vif.b_pl_trdy, vif.b_pl_stallreq,
+             vif.b_pl_state_sts, vif.b_block_locked, vif.b_sync_error);
+    end
+    $fclose(fd);
     phase.drop_objection(this);
   endtask
 endclass

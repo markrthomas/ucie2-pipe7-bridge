@@ -16,6 +16,7 @@ from cocotb.triggers import RisingEdge, Timer
 import pyuvm
 from pyuvm import uvm_test
 
+import b2b_trace_format as btf
 import framing_model as fm
 import gen_vectors as gv
 from agents.fdi_agent import _i
@@ -55,8 +56,28 @@ class B2bPcieFdTest(uvm_test):
         cocotb.start_soon(self._drive(dut, "a"))      # forward inject at A
         cocotb.start_soon(self._drive(dut, "b"))      # reverse inject at B
 
-        for _ in range(RUN_PCLK):
-            await RisingEdge(dut.pclk)
+        # Canonical per-cycle B2B trace (Phase I I8c): both bridges' PIPE TX
+        # outputs + lock/error, sampled post-edge on the coincident pclk. The SV
+        # UVM b2b_pcie_fd_test emits the same columns so trace_compare holds the
+        # two full-duplex TBs in cycle-lockstep. Distinct filename from the sacred
+        # single-bridge bridge.trace, so that cross-check is untouched.
+        os.makedirs("build", exist_ok=True)
+        cols = btf.PCIE_FD_COLUMNS
+        with open("build/b2b_pcie_fd.trace", "w") as f:
+            f.write(btf.header(cols) + "\n")
+            for cyc in range(RUN_PCLK):
+                await RisingEdge(dut.pclk)
+                row = {
+                    "a_tx_data_valid": _i(dut.a_tx_data_valid),
+                    "a_tx_data":       _i(dut.a_tx_data),
+                    "a_block_locked":  _i(dut.a_block_locked),
+                    "a_sync_error":    _i(dut.a_sync_error),
+                    "b_tx_data_valid": _i(dut.b_tx_data_valid),
+                    "b_tx_data":       _i(dut.b_tx_data),
+                    "b_block_locked":  _i(dut.b_block_locked),
+                    "b_sync_error":    _i(dut.b_sync_error),
+                }
+                f.write(btf.format_row(cols, cyc, row, PIPE_WIDTH) + "\n")
         self.drop_objection()
         self._check(fwd, rev)
 

@@ -177,14 +177,16 @@ run-b2b-ucie-fd: _require-uvm-home
 	rm -rf $(OBJ)/b2b_ucie_fd && mkdir -p $(OBJ)/b2b_ucie_fd
 	$(VERILATOR) $(VFLAGS) --top-module tb_b2b_ucie_fd --Mdir $(OBJ)/b2b_ucie_fd $(INCS) \
 	  $(UVM_HDR) $(UVM_DPI) $(B2B_UCIE_FD_SRCS)
-	$(OBJ)/b2b_ucie_fd/Vtb_b2b_ucie_fd $(UVM_PLUSARGS) $(STIM_PLUSARGS) 2>&1 | tee $(OBJ)/b2b_ucie_fd/run.log
+	$(OBJ)/b2b_ucie_fd/Vtb_b2b_ucie_fd $(UVM_PLUSARGS) $(STIM_PLUSARGS) \
+	  +B2B_TRACE=$(OBJ)/b2b_ucie_fd/b2b_ucie_fd.trace 2>&1 | tee $(OBJ)/b2b_ucie_fd/run.log
 	$(call B2B_RUN_CHECK,$(OBJ)/b2b_ucie_fd)
 
 run-b2b-pcie-fd: _require-uvm-home
 	rm -rf $(OBJ)/b2b_pcie_fd && mkdir -p $(OBJ)/b2b_pcie_fd
 	$(VERILATOR) $(VFLAGS) --top-module tb_b2b_pcie_fd --Mdir $(OBJ)/b2b_pcie_fd $(INCS) \
 	  $(UVM_HDR) $(UVM_DPI) $(B2B_PCIE_FD_SRCS)
-	$(OBJ)/b2b_pcie_fd/Vtb_b2b_pcie_fd $(UVM_PLUSARGS) $(STIM_PLUSARGS) 2>&1 | tee $(OBJ)/b2b_pcie_fd/run.log
+	$(OBJ)/b2b_pcie_fd/Vtb_b2b_pcie_fd $(UVM_PLUSARGS) $(STIM_PLUSARGS) \
+	  +B2B_TRACE=$(OBJ)/b2b_pcie_fd/b2b_pcie_fd.trace 2>&1 | tee $(OBJ)/b2b_pcie_fd/run.log
 	$(call B2B_RUN_CHECK,$(OBJ)/b2b_pcie_fd)
 
 clean:

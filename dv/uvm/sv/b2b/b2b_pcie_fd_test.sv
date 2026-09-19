@@ -6,9 +6,14 @@
 //   reverse driver -> B.rx, re-framed out at A.tx.
 // Each direction injects the shared pre-framed PIPE word stream (+VEC_WORDS) and
 // both re-framed outputs must equal it, with both deframers locked and no
-// sync_error. Mirrors dv/pyuvm/test_b2b_pcie_fd.py. Scoreboard-only (byte-identical
-// B2B trace gate is a later I8 increment). Timing tasks are forked after reset
-// deassert. Run length: +RUN_PCLK (default RUN_PCLK localparam).
+// sync_error. Mirrors dv/pyuvm/test_b2b_pcie_fd.py. Timing tasks are forked after
+// reset deassert. Run length: +RUN_PCLK (default RUN_PCLK localparam).
+//
+// Phase I I8c: emits the canonical per-cycle B2B trace (+B2B_TRACE=<path>) of both
+// bridges' PIPE TX outputs + lock/error, sampled #0.1 post-edge on the coincident
+// pclk. Columns/format mirror b2b_trace_format.PCIE_FD_COLUMNS so
+// tools/trace_compare.py (make trace-compare-b2b) holds this env cycle-for-cycle
+// against the PyUVM full-duplex TB.
 // -----------------------------------------------------------------------------
 class b2b_pcie_fd_test extends uvm_test;
   `uvm_component_utils(b2b_pcie_fd_test)
@@ -48,8 +53,14 @@ class b2b_pcie_fd_test extends uvm_test;
 
   task run_phase(uvm_phase phase);
     int unsigned run_pclk;
+    int          fd;
+    string       path;
     phase.raise_objection(this);
     if (!$value$plusargs("RUN_PCLK=%d", run_pclk)) run_pclk = RUN_PCLK;
+    if (!$value$plusargs("B2B_TRACE=%s", path))    path = "b2b_pcie_fd.trace";
+    fd = $fopen(path, "w");
+    if (fd == 0) `uvm_fatal("B2BPFD", $sformatf("cannot open %s", path));
+    $fwrite(fd, "cycle,a_tx_data_valid,a_tx_data,a_block_locked,a_sync_error,b_tx_data_valid,b_tx_data,b_block_locked,b_sync_error\n");
 
     wait (vif.pclk_rst_n === 1'b1 && vif.lclk_rst_n === 1'b1);
 
@@ -60,7 +71,13 @@ class b2b_pcie_fd_test extends uvm_test;
       mon_rev.capture();
     join_none
 
-    repeat (run_pclk) @(posedge vif.pclk);
+    for (int cyc = 0; cyc < run_pclk; cyc++) begin
+      @(posedge vif.pclk); #0.1;
+      $fwrite(fd, "%0d,%0d,%h,%0d,%0d,%0d,%h,%0d,%0d\n",
+        cyc, vif.a_tx_data_valid, vif.a_tx_data, vif.a_block_locked, vif.a_sync_error,
+             vif.b_tx_data_valid, vif.b_tx_data, vif.b_block_locked, vif.b_sync_error);
+    end
+    $fclose(fd);
     phase.drop_objection(this);
   endtask
 endclass

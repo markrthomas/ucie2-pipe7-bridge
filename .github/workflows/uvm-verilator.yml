@@ -114,6 +114,13 @@ jobs:
             UVM_HOME="$VERILATOR_PREFIX/uvm" \
             BUILD_JOBS="$(nproc)"
 
+      # Full-duplex B2B cycle-accurate cross-check (Phase I I8c). Diffs the PyUVM
+      # full-duplex traces (make b2b, above) against the SV UVM full-duplex traces
+      # (make uvm-b2b, just above) per tier. GATING: both fd tiers must track
+      # cycle-for-cycle. Placed after both b2b producers so both traces exist.
+      - name: B2B full-duplex cross-check (PyUVM trace == UVM trace, make trace-compare-b2b)
+        run: make trace-compare-b2b
+
       - name: Upload traces + UVM log
         if: always()
         uses: actions/upload-artifact@v4
@@ -127,6 +134,10 @@ jobs:
             dv/uvm/vlt/obj/b2b_pcie/run.log
             dv/uvm/vlt/obj/b2b_ucie_fd/run.log
             dv/uvm/vlt/obj/b2b_pcie_fd/run.log
+            dv/pyuvm/build/b2b_ucie_fd.trace
+            dv/pyuvm/build/b2b_pcie_fd.trace
+            dv/uvm/vlt/obj/b2b_ucie_fd/b2b_ucie_fd.trace
+            dv/uvm/vlt/obj/b2b_pcie_fd/b2b_pcie_fd.trace
           retention-days: 7
           if-no-files-found: ignore
 

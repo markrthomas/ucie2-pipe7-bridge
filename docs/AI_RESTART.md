@@ -31,10 +31,12 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   Each byte-identical in Gen5, verified locally (lint/pyuvm/link-fsm/is-os/err-inject/
   gen6/flit-cancel/mgmt/lint-uvm/formal); full `make uvm`+trace-compare confirmed by CI.
   I7: `make fcov` closed to honest 100% (39→53 bins) with seeded CRV + error injection.
-  **I8 (last item) in progress, staged I8a–I8d.** I8a+I8b done: full-duplex SV UVM UCIe
-  (`tb_b2b_ucie_fd`) and PCIe (`tb_b2b_pcie_fd`) tiers, mirroring PyUVM `test_b2b_ucie_fd`
-  / `test_b2b_pcie_fd`; both in `uvm-b2b`+CI. Next: I8c (B2B byte-identical trace gate),
-  I8d (credit FDI seam if needed).
+  **I8 (last item) in progress, staged I8a–I8d.** I8a+I8b+I8c done: full-duplex SV UVM
+  UCIe (`tb_b2b_ucie_fd`) and PCIe (`tb_b2b_pcie_fd`) tiers, mirroring PyUVM
+  `test_b2b_ucie_fd` / `test_b2b_pcie_fd`; both in `uvm-b2b`+CI. I8c: byte-identical B2B
+  trace-compare gate — both fd TBs emit the shared `b2b_trace_format` per-cycle boundary
+  trace and `make trace-compare-b2b` diffs PyUVM vs SV-UVM per tier (CI-gating; SV
+  `--binary` runs in CI). Next: I8d (credit FDI seam if long-burst flow control needs it).
 
 ## Work queue (tick as you go; ▶ = do next)
 
@@ -65,7 +67,10 @@ Detail for each is in `docs/phase_i_design_completion.md`.
     driver/monitor, dual-direction scoreboard, `tb_b2b_pcie_fd`) mirroring the green PyUVM
     `test_b2b_pcie_fd`; wired into `run-b2b`/`uvm-b2b` + CI. Lint-clean locally; `--binary`
     runs in CI.
-  - [ ] **I8c.** Byte-identical **B2B trace-compare gate** (PyUVM↔SV-UVM per-cycle, both fd tiers).
+  - [x] **I8c.** Byte-identical **B2B trace-compare gate** — both fd TBs emit the shared
+    `dv/common/models/b2b_trace_format` per-cycle boundary trace (both bridges' outputs);
+    `make trace-compare-b2b` diffs PyUVM vs SV-UVM per tier (CI-gating). Lint-clean +
+    PyUVM traces verified locally; the byte-identical diff runs in CI (`--binary` SV UVM).
   - [ ] **I8d.** Credit-based FDI seam (if long-burst flow control needs it).
 
 *(Update the ▶ marker and check boxes here in the same PR that lands each item.)*
