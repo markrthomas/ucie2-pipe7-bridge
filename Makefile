@@ -99,7 +99,8 @@ endif
         lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci gen-vectors \
         metrics dashboard eda-playground eda-check waves wave wave-check wave-web \
         railway-prebuild railway-template railway-swarm-probe railway-swarm \
-        railway-swarm-agents swarm clean
+        railway-swarm-agents swarm clean \
+        test cocotb sim check regress ci
 
 default: help
 
@@ -139,6 +140,12 @@ help:
 	@echo "  (lint/pyuvm/fcov/lint-uvm/coverage auto-detect this oss-cad box and run"
 	@echo "   a clean local env; append -ci — e.g. 'make fcov-ci' — or LOCAL=0 to force"
 	@echo "   the canonical CI toolchain; LOCAL=1 forces local.)"
+	@echo "  -- DV_STANDARDS.md cross-repo target names (see that file at repo root) --"
+	@echo "  make test/cocotb/sim  aliases for pyuvm (this repo's functional tier) [local]"
+	@echo "  make check         light local gate: lint + pyuvm               [local]"
+	@echo "  make regress       fuller local gate: check + lint-uvm          [local]"
+	@echo "  make ci            regress + coverage + formal (local; the heavy CI/"
+	@echo "                     Railway-only uvm + trace-compare gate stays separate)"
 	@echo "  make uvm           full SV UVM gate: vectors+lint+--binary run [CI/Railway]"
 	@echo "                     (the canonical target the container entrypoint runs)"
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
@@ -256,6 +263,11 @@ gen-vectors:
 # RUN_PCLK are exported so the test drives the shared vector for the run length.
 pyuvm: gen-vectors
 	$(LOCAL_ENV) VEC="$(VEC)" RUN_PCLK="$(RUN_PCLK)" PKT_TRACK="$(PKT_TRACK)" $(MAKE) -C dv/pyuvm
+
+# ---- DV_STANDARDS.md cross-repo aliases (this repo's functional tier is `pyuvm`) --
+test: pyuvm
+cocotb: pyuvm
+sim: pyuvm
 
 # ---- Functional coverage tier (cocotb_coverage; Icarus in CI) ---------------
 # Directed-ramp coverage: independent of the random default (its own committed vec).
@@ -392,6 +404,18 @@ uvm-b2b: gen-vectors
 # ---- SV UVM env: lint only here (full build is CI/Railway) ------------------
 lint-uvm:
 	$(LOCAL_ENV) $(MAKE) -C dv/uvm/vlt lint $(LINT_UVM_ARGS)
+
+# ---- DV_STANDARDS.md cross-repo gate levels ----------------------------------
+# check   = the light local gate (lint + the functional tier)
+# regress = check + this repo's other RAM-safe local tiers (SV UVM elaborate-lint)
+# ci      = regress + the post-gate advisory tiers, still local (coverage + formal);
+#           the heavy CI/Railway-only `uvm` --binary gate + `trace-compare` are
+#           deliberately NOT folded in here — see the file header.
+check: lint pyuvm
+
+regress: check lint-uvm
+
+ci: regress coverage formal
 
 # ---- Force the canonical CI/remote toolchain (bypass the local autodetect) --
 # `make fcov-ci` etc. re-enter with LOCAL=0, so they run exactly as CI/Railway
