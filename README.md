@@ -64,6 +64,10 @@ flowchart LR
 
 ## Quick start (local, ~8 GB host)
 
+> Cross-repo `make` target names (`test`/`check`/`regress`/`ci`, …) that this
+> repo aliases onto its own tiers are documented in
+> [`DV_STANDARDS.md`](DV_STANDARDS.md).
+
 ```bash
 make tools       # check the toolchain, install what is MISSING (apt + pip)
 make tools-check # report only, install nothing (exit non-zero if a CORE tool is absent)
