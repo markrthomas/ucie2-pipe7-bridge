@@ -25,34 +25,34 @@
 @200
 -==== clocks + reset ====
 @28
-lclk
-lclk_rst_n
-pclk
-pclk_rst_n
+ucie2_pipe7_bridge.lclk
+ucie2_pipe7_bridge.lclk_rst_n
+ucie2_pipe7_bridge.pclk
+ucie2_pipe7_bridge.pclk_rst_n
 @200
 -==== FDI TX (lp_ -> bridge) ====
 @22
-lp_data[127:0]
+ucie2_pipe7_bridge.lp_data[127:0]
 @28
-lp_valid
-lp_irdy
-pl_trdy
+ucie2_pipe7_bridge.lp_valid
+ucie2_pipe7_bridge.lp_irdy
+ucie2_pipe7_bridge.pl_trdy
 @200
 -==== FDI RX (bridge -> pl_) ====
 @22
-pl_data[127:0]
+ucie2_pipe7_bridge.pl_data[127:0]
 @28
-pl_valid
-pl_flit_cancel
+ucie2_pipe7_bridge.pl_valid
+ucie2_pipe7_bridge.pl_flit_cancel
 @200
 -==== FDI link state machine ====
 @22
-lp_state_req[3:0]
-pl_state_sts[3:0]
+ucie2_pipe7_bridge.lp_state_req[3:0]
+ucie2_pipe7_bridge.pl_state_sts[3:0]
 @28
-pl_stallreq
-lp_stallack
-lp_linkerror
+ucie2_pipe7_bridge.pl_stallreq
+ucie2_pipe7_bridge.lp_stallack
+ucie2_pipe7_bridge.lp_linkerror
 @22
 ucie2_pipe7_bridge.link.state_q[3:0]
 @28
@@ -75,15 +75,15 @@ ucie2_pipe7_bridge.datapath.framer.fill
 @28
 ucie2_pipe7_bridge.datapath.framer.emit
 @22
-tx_data[79:0]
+ucie2_pipe7_bridge.tx_data[79:0]
 @28
-tx_data_valid
+ucie2_pipe7_bridge.tx_data_valid
 @200
 -==== PIPE RX -> Gen5 deframer ====
 @22
-rx_data[79:0]
+ucie2_pipe7_bridge.rx_data[79:0]
 @28
-rx_valid
+ucie2_pipe7_bridge.rx_valid
 @420
 ucie2_pipe7_bridge.datapath.deframer.rfill
 @28
@@ -102,24 +102,24 @@ ucie2_pipe7_bridge.egress.blk_data[127:0]
 @100000028
 ucie2_pipe7_bridge.ctrl.state[2:0]
 @22
-rate[3:0]
-power_down[3:0]
+ucie2_pipe7_bridge.rate[3:0]
+ucie2_pipe7_bridge.power_down[3:0]
 @28
-width[2:0]
-rx_width[2:0]
-tx_detect_rx
+ucie2_pipe7_bridge.width[2:0]
+ucie2_pipe7_bridge.rx_width[2:0]
+ucie2_pipe7_bridge.tx_detect_rx
 @22
-tx_elec_idle[3:0]
+ucie2_pipe7_bridge.tx_elec_idle[3:0]
 @28
-phy_status
-rx_status[2:0]
-rx_elec_idle
+ucie2_pipe7_bridge.phy_status
+ucie2_pipe7_bridge.rx_status[2:0]
+ucie2_pipe7_bridge.rx_elec_idle
 @200
 -==== bridge status ====
 @29
-block_locked
-sync_error
-in_data_phase
-rx_overflow
+ucie2_pipe7_bridge.block_locked
+ucie2_pipe7_bridge.sync_error
+ucie2_pipe7_bridge.in_data_phase
+ucie2_pipe7_bridge.rx_overflow
 [pattern_trace] 1
 [pattern_trace] 0
