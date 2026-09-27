@@ -76,6 +76,15 @@ RTL_TOP   := ucie2_pipe7_bridge
 PROFILE  ?= random
 LEN      ?= 8
 SEED     ?= 0xC0FFEE
+# `make wave` / `make waves` are the random-waveform entry points: with no SEED
+# given they use SEED=random (a fresh seed each run; gen-vectors prints the
+# resolved value, and `make wave SEED=<that value>` replays it). Every other
+# target keeps the fixed default above.
+ifneq ($(filter wave waves,$(MAKECMDGOALS)),)
+  ifeq ($(origin SEED),file)
+    SEED := random
+  endif
+endif
 RUN_PCLK ?= $(shell expr 160 + 40 \* $(LEN))
 VEC      := $(abspath dv/common/vectors/build/fdi_flits.vec)
 # Framed PIPE word stream (block-aligned, via the shared framing model) for the
@@ -648,9 +657,9 @@ wave: waves
 	@if ! command -v $(GTKWAVE) >/dev/null 2>&1; then \
 	  echo "[WAVES] gtkwave not found on PATH — install it (apt-get install -y gtkwave)"; \
 	  echo "[WAVES] the dump is ready at $(WAVE_FST); open it wherever you like"; \
-	  exit 1; fi
-	@echo "[WAVES] opening $(WAVE_FST) in GTKWave with layout $(WAVE_LAYOUT)"
-	@exec $(GTKWAVE) --save=$(WAVE_LAYOUT) $(WAVE_FST)
+	  exit 0; fi
+	@echo "[WAVES] opening $(WAVE_FST) in GTKWave with layout $(WAVE_LAYOUT), zoomed to fit"
+	@exec $(GTKWAVE) -S $(WAVE_LAYOUT_DIR)/zoom_full.tcl --save=$(WAVE_LAYOUT) $(WAVE_FST)
 
 wave-check:
 	$(PYTHON) tools/wave_check.py --layout-dir $(WAVE_LAYOUT_DIR) \

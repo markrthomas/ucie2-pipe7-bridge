@@ -116,8 +116,9 @@ make formal         # [FORMAL] <job>: BMC depth N PASSED   (SymbiYosys BMC)
 …and, off the gate entirely, waveforms (see "Waveform debugging" below):
 
 ```bash
-make waves          # [WAVES] wrote build/waves/test_roundtrip.fst
-make wave           # same, then open it in GTKWave with dv/waves/default.gtkw
+make waves          # [WAVES] wrote build/waves/test_roundtrip.fst (fresh random SEED;
+                    #   [VEC] prints it, SEED=<value> replays)
+make wave           # same, then open it in GTKWave with dv/waves/default.gtkw, zoomed to fit
 make wave-check     # [WAVES] wave-check: … every path resolves
 make wave-web       # bundle that same dump into ONE offline build/waves/*.html
 ```
