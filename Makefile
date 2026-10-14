@@ -160,6 +160,7 @@ help:
 	@echo "  make trace-compare cycle-accurate PyUVM==UVM trace diff        [CI/Railway]"
 	@echo "  make trace-compare-b2b  full-duplex B2B PyUVM==UVM trace diff  [CI/Railway]"
 	@echo "  make coverage      RTL line coverage of the directed round-trip [local; post-gate]"
+	@echo "  make stress        stress / randomized simulation (n/a stub if none)"
 	@echo "                     (Verilator --coverage-line; prints [COV] line=NN.N%"
 	@echo "                      plus an informational [COV] branch=NN.N%;"
 	@echo "                      advisory floor — set a gate with COV_MIN=NN)"
@@ -789,3 +790,8 @@ clean:
 	-$(MAKE) -C dv/pyuvm clean
 	-$(MAKE) -C dv/uvm/vlt clean
 	rm -rf obj_dir report $(COV_DIR) build/formal $(WAVE_DIR)
+
+# Standard DV target (DV_STANDARDS.md)
+.PHONY: stress
+stress:
+	@echo "[STRESS] n/a: no stress/randomized tier in this repo yet (see DV_STANDARDS.md)"
