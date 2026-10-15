@@ -73,7 +73,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install RTL tools (apt Verilator + Icarus; NOT OSS CAD Suite)
+      - name: Install RTL tools (apt Verilator + Icarus)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends verilator iverilog
@@ -98,10 +98,10 @@ jobs:
 
       # Formal tier (Phase F increment 3): apt yosys + SymbiYosys from YosysHQ/sby
       # (pure Python scripts, seconds to install — NOT a source compile), z3 as the
-      # BMC solver. This is NOT OSS CAD Suite. Pre-installing here lets the swarm
+      # BMC solver. Pre-installing here lets the swarm
       # RUN `make formal` to self-verify instead of building a toolchain inside its
       # timed budget (which is what timed out the from-source attempt).
-      - name: Install formal tools (apt yosys + SymbiYosys; NOT OSS CAD Suite)
+      - name: Install formal tools (apt yosys + SymbiYosys)
         run: |
           set -euo pipefail
           sudo apt-get update

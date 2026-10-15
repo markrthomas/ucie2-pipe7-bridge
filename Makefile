@@ -13,31 +13,25 @@
 #
 # Toolchain is overridable so this works with whatever is on PATH; the
 # reproducible envs (.devcontainer, Dockerfile*, CI) install apt verilator/
-# iverilog + a from-source UVM Verilator and do NOT use OSS CAD Suite.
+# iverilog + a from-source UVM Verilator.
 # =============================================================================
 
 VERILATOR ?= verilator
 IVERILOG  ?= iverilog
 PYTHON    ?= python3
 
-# ---- Local vs CI toolchain autodetect ---------------------------------------
-# The maintainer's WSL box has oss-cad-suite first on PATH (its iverilog/vvp/
-# python shadow the real ones) and exports VERILATOR_ROOT into oss-cad, which
-# breaks the plain gate targets; a from-source UVM Verilator lives at
-# ~/verilator. When BOTH are true we are "local", and the plain gate targets
-# (lint/pyuvm/fcov/lint-uvm/coverage) auto-apply a clean env: the from-source
-# Verilator, /usr/bin/python3 (the interpreter that actually has cocotb/
-# cocotb_coverage/pyuvm), and FCOV via Verilator (system Icarus is too old and
-# oss-cad's Icarus pollutes Python). In CI/Railway (clean PATH, no ~/verilator)
-# this is inert and everything runs canonically (apt verilator/iverilog, Icarus
-# fcov). Force with LOCAL=1 / LOCAL=0; the *-ci targets pin the canonical path.
-LOCAL ?= $(if $(and \
-    $(findstring oss-cad,$(VERILATOR_ROOT)$(shell command -v verilator 2>/dev/null)),\
-    $(wildcard $(HOME)/verilator/bin/verilator)),1,)
+# ---- Local vs CI toolchain (opt-in) -----------------------------------------
+# A from-source UVM Verilator can live at ~/verilator. With LOCAL=1 the plain
+# gate targets (lint/pyuvm/fcov/lint-uvm/coverage) apply a clean env: that
+# Verilator, /usr/bin/python3 (the interpreter that has cocotb/cocotb_coverage/
+# pyuvm), and FCOV via Verilator (a system Icarus 11 is too old). Default is off,
+# so everything runs canonically on whatever is on PATH (apt verilator/iverilog,
+# Icarus fcov) — exactly like CI/Railway. The *-ci targets pin the canonical path.
+LOCAL ?=
 
 ifeq ($(LOCAL),1)
   LOCAL_PATH         ?= $(HOME)/verilator/bin:$(HOME)/.local/bin:/usr/local/bin:/usr/bin:/bin
-  # Drop oss-cad's VERILATOR_ROOT and put the local toolchain first, so cocotb
+  # Drop any exported VERILATOR_ROOT and put the local toolchain first, so cocotb
   # submakes find the from-source verilator + the python that has the deps.
   LOCAL_ENV          := env -u VERILATOR_ROOT PATH="$(LOCAL_PATH):$$PATH"
   VERILATOR          := $(HOME)/verilator/bin/verilator
@@ -118,7 +112,7 @@ help:
 	@echo "  make tools         check the toolchain, install what is MISSING  [local]"
 	@echo "                     (core apt+pip for lint/pyuvm/fcov, formal yosys/z3/sby,"
 	@echo "                      waves gtkwave; from-source UVM Verilator is opt-in via"
-	@echo "                      TOOLS_HEAVY=1. NOT OSS CAD Suite. tools/check_tools.sh)"
+	@echo "                      TOOLS_HEAVY=1. tools/check_tools.sh)"
 	@echo "  make tools-check   report the toolchain only, install nothing    [local/CI]"
 	@echo "                     (exit non-zero if a CORE tool is missing; optional gaps OK)"
 	@echo "  make lint          RTL strict lint (Verilator -Wall)          [local]"
@@ -146,9 +140,9 @@ help:
 	@echo "                     (both fd tiers at LONGBURST_LEN flits, default 256;"
 	@echo "                      proves the ready/valid seam holds with no credit seam)"
 	@echo "  make lint-uvm      elaborate-only lint of the SV UVM env       [local]"
-	@echo "  (lint/pyuvm/fcov/lint-uvm/coverage auto-detect this oss-cad box and run"
-	@echo "   a clean local env; append -ci — e.g. 'make fcov-ci' — or LOCAL=0 to force"
-	@echo "   the canonical CI toolchain; LOCAL=1 forces local.)"
+	@echo "  (lint/pyuvm/fcov/lint-uvm/coverage run on the PATH toolchain; LOCAL=1 opts in"
+	@echo "   to a clean ~/verilator env; 'make fcov-ci' etc. / LOCAL=0 pin the canonical"
+	@echo "   CI toolchain.)"
 	@echo "  -- DV_STANDARDS.md cross-repo target names (see that file at repo root) --"
 	@echo "  make test/cocotb/sim  aliases for pyuvm (this repo's functional tier) [local]"
 	@echo "  make check         light local gate: lint + pyuvm               [local]"
@@ -205,7 +199,7 @@ help:
 	@echo "                      prints [WAVES] wrote …)"
 	@echo "  make wave          make waves, then open it in GTKWave             [local; OFF-GATE]"
 	@echo "                     (layout dv/waves/<TEST>.gtkw, else default.gtkw;"
-	@echo "                      needs a display — apt gtkwave, not OSS CAD Suite)"
+	@echo "                      needs a display — apt gtkwave)"
 	@echo "  make wave-check    drift-guard: every net path in every committed  [local; OFF-GATE]"
 	@echo "                     dv/waves/*.gtkw must resolve in that target's"
 	@echo "                     real dump hierarchy (via gtkwave's fst2vcd);"
@@ -240,7 +234,7 @@ help:
 
 # ---- Toolchain check / install ----------------------------------------------
 # `tools` verifies every tier's tools and installs the MISSING ones (apt + pip,
-# mirroring the Dockerfiles/CI — NOT OSS CAD Suite). The from-source UVM-capable
+# mirroring the Dockerfiles/CI). The from-source UVM-capable
 # Verilator (needed only for the CI/Railway `make uvm` --binary gate) is a slow,
 # large build, so it is OPT-IN: `make tools TOOLS_HEAVY=1`. `tools-check` is the
 # read-only form (installs nothing; non-zero exit if a CORE tool is missing) for
@@ -429,7 +423,7 @@ ci: regress coverage formal
 
 # ---- Force the canonical CI/remote toolchain (bypass the local autodetect) --
 # `make fcov-ci` etc. re-enter with LOCAL=0, so they run exactly as CI/Railway
-# do (apt verilator/iverilog, Icarus fcov) regardless of this box's oss-cad env.
+# do (apt verilator/iverilog, Icarus fcov) regardless of LOCAL / this box's env.
 lint-ci pyuvm-ci fcov-ci lint-uvm-ci coverage-ci:
 	$(MAKE) $(@:-ci=) LOCAL=0
 
@@ -506,7 +500,7 @@ coverage:
 #   pipe7_gearbox       -- Gen5 128b/130b framer+deframer sync legality (no
 #                          accumulator overflow/underflow, no illegally-framed
 #                          block ever passed upstream).
-# Toolchain: apt yosys + SymbiYosys (YosysHQ/sby) + z3 -- NOT OSS CAD Suite.
+# Toolchain: apt yosys + SymbiYosys (YosysHQ/sby) + z3.
 # Degrades gracefully: no sby on PATH => a skip message and exit 0.
 # Bounded, not unbounded: the banner reports "BMC depth N".
 formal:
@@ -597,7 +591,6 @@ eda-check:
 # layouts and the vendored dv/waves/viewer/ template are committed. Toolchain:
 # Verilator's own FST writer + apt gtkwave (its fst2vcd for the drift-guard, and
 # for the one-shot FST -> VCD conversion `wave-web` does at bundle time)
-# -- NOT OSS CAD Suite.
 #
 # NOT extended to the SV UVM env (`waves-uvm`) in this increment: that flow needs
 # the from-source UVM Verilator, which neither this host nor the light CI job has,
@@ -633,8 +626,8 @@ WAVE_LAYOUT := $(if $(wildcard $(WAVE_LAYOUT_DIR)/$(TEST).gtkw),\
 #
 # NOTE: waves deliberately does NOT wrap the sim build in LOCAL_ENV (unlike
 # pyuvm/lint). LOCAL_ENV forces the from-source ~/verilator, whose FST writer
-# `#include <lz4.h>` needs system liblz4-dev; the oss-cad Verilator on PATH has a
-# self-contained FST writer, so the on-PATH toolchain is what dumps waveforms here.
+# `#include <lz4.h>` needs system liblz4-dev, so the on-PATH toolchain is what
+# dumps waveforms here.
 # (gen-vectors, the prereq, still runs under LOCAL_ENV via its own recipe.)
 ifeq ($(TEST),roundtrip)
   WAVE_DEPS := gen-vectors

@@ -8,7 +8,7 @@
 # Verilator and its ENTRYPOINT runs `make uvm`. This script is the laptop-side
 # launcher: it deploys the CURRENT working tree (uncommitted edits included),
 # sets KEEP_ALIVE=1 so the container holds open after the gate for attach, and
-# streams the run. NOT OSS CAD Suite; no new deps beyond the Railway CLI.
+# streams the run. No new deps beyond the Railway CLI.
 #
 #   docker/remote.sh up        deploy current tree + run `make uvm`, then stream
 #   docker/remote.sh logs      (re)stream the running deployment's logs

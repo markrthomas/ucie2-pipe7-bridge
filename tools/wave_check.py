@@ -20,7 +20,6 @@
 # pretending to have checked something.
 #
 # Stdlib Python only. Toolchain: apt gtkwave (fst2vcd) + Verilator's FST writer
-# — NOT OSS CAD Suite.
 # -----------------------------------------------------------------------------
 import argparse
 import re

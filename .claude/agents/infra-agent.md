@@ -22,8 +22,8 @@ strictly the build/deploy/CI plumbing — you may edit these and only these:
 
 1. **Green gate parity.** `.github/workflows/{ci.yml,uvm-verilator.yml}` install the
    same tools and run the same `make lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare` as
-   the repo docs. This project does **NOT** use OSS CAD Suite in the reproducible
-   envs — apt verilator/iverilog for lint/pyuvm/fcov, a from-source UVM Verilator
+   the repo docs. The reproducible
+   envs use apt verilator/iverilog for lint/pyuvm/fcov, a from-source UVM Verilator
    ≥5.050 for the `--binary` UVM flow.
 2. **Image builds.** `docker build -f Dockerfile .` (from-source UVM Verilator) and
    `-f Dockerfile.dev .` complete; the build-time healthchecks pass. If docker is

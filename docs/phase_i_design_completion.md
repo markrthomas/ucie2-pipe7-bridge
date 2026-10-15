@@ -21,7 +21,7 @@ and the last B2B item (H3b). It subsumes the open `PLAN.md` items **G21+** and
 3. **`rtl/ucie2_pipe7_pkg.sv` encodings are frozen** except where a Phase I item
    explicitly un-FLAGs one — and then `docs/ucie2_pipe71_spec_crosscheck.md` is
    updated in the same change (move the row out of "FLAGGED", cite the source).
-4. **No OSS CAD Suite.** New DV runs on the existing tiers/toolchain.
+4. New DV runs on the existing tiers/toolchain.
 5. One PR per item (or per coherent group); branch off `main`; a human merges.
 
 ---

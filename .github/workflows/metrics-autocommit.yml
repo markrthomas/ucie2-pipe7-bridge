@@ -44,7 +44,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # Light toolchain only -- NOT OSS CAD Suite, and deliberately NOT the
+      # Light toolchain only, and deliberately NOT the
       # from-source UVM Verilator: this job measures the cheap tiers. `uvm` and
       # `trace-compare` are recorded 'not-run' (never 'fail', never guessed);
       # uvm-verilator.yml is what measures them.

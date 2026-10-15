@@ -2,9 +2,9 @@
 # SV UVM-on-Verilator flow for the UCIe2->PIPE7 bridge (PLAN Phase D).
 #
 # Requires a UVM-capable Verilator (>= 5.050) and the bundled Accellera UVM
-# 2020.3.1 library — the apt/OSS-CAD-Suite Verilator is NOT UVM-capable. Set
+# 2020.3.1 library — the apt Verilator is NOT UVM-capable. Set
 # UVM_HOME to the dir holding uvm_pkg_all_v2020_3_1_dpi.svh (e.g. a from-source
-# Verilator's test_regress/t/uvm). This project does NOT use OSS CAD Suite.
+# Verilator's test_regress/t/uvm).
 #
 #   make lint    elaborate-only (~330 MB, seconds)   -> runs locally + CI
 #   make run     full --binary build + run           -> CI / Railway only

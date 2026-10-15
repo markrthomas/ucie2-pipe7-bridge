@@ -13,12 +13,12 @@ implement **only the increment named in your task** (default: increment 1).
   gate — never fold it into `lint`/`pyuvm`/`fcov`/`uvm`/`trace-compare` or change
   the trace emitters (`dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv`, `dv/pyuvm/test_roundtrip.py`)
   or the fixed clock/reset/stimulus schedule.
-- **No OSS CAD Suite** in the reproducible envs (`.devcontainer`, `Dockerfile*`,
-  CI). Use apt verilator/iverilog + the from-source UVM Verilator; for formal use
+- **Toolchain** for the reproducible envs (`.devcontainer`, `Dockerfile*`,
+  CI): use apt verilator/iverilog + the from-source UVM Verilator; for formal use
   apt yosys + SymbiYosys from YosysHQ/sby (pure-Python scripts, not a source
-  compile) + z3, not oss-cad-suite. (Original "from-source yosys" was relaxed to
+  compile) + z3. (Original "from-source yosys" was relaxed to
   apt yosys 2026-09-02 — the source compile blew the swarm's timed budget; apt
-  yosys is a distro package, still NOT oss-cad-suite.)
+  yosys is a distro package.)
 - Pinned-tool paths, `[BANNER]` style, one clean commit per logical step, the
   `Co-Authored-By` + `Claude-Session` trailers. **Never commit on `main`** —
   branch `swarm/phaseF-<slug>`, push incrementally, open a PR (draft early), mark
@@ -60,7 +60,7 @@ after `trace-compare` and its artifact upload.
 
 ## Increment 3 — formal (SymbiYosys)
 
-`make formal` — SymbiYosys (apt yosys + YosysHQ/sby + z3, NOT oss-cad-suite) BMC on a
+`make formal` — SymbiYosys (apt yosys + YosysHQ/sby + z3) BMC on a
 tractable block or two (the Gen5 framer/deframer gearbox, the msgbus/ctrl FSM):
 prove the FLAGGED-safe properties (no illegal FSM state, gearbox sync legality).
 CI/Railway-only if heavy; document the tool install. `[FORMAL] … PASSED`.
@@ -138,7 +138,7 @@ advisory "RTL line coverage" step:
       # never perturb lint/pyuvm/fcov/uvm/trace-compare. Reads no testbench and
       # touches no rtl/dv file. z3 is already installed above; add yosys + the
       # click module + SymbiYosys itself (shallow git clone, `make install` is
-      # a pure-Python copy -- no compile). NOT OSS CAD Suite. This must PASS.
+      # a pure-Python copy -- no compile). This must PASS.
       - name: Install SymbiYosys formal tools (yosys, sby, click)
         run: |
           set -euo pipefail

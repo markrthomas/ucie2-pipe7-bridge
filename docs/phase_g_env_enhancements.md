@@ -21,8 +21,8 @@ then implement **only the increment named in your task** (default: increment 1).
   GTKWave-independent — dumping must never perturb timing or the byte-identical
   trace. Wave artifacts live under `dv/waves/` (layouts) and a build/`sim_build`
   dir (dumps), and are git-ignored except curated layout files.
-- **No OSS CAD Suite** in the reproducible envs (`.devcontainer`, `Dockerfile*`,
-  CI). Waves use **apt `gtkwave`** (its `fst2vcd` for the drift-guard) and
+- **Toolchain** for the reproducible envs (`.devcontainer`, `Dockerfile*`,
+  CI): waves use **apt `gtkwave`** (its `fst2vcd` for the drift-guard) and
   Verilator's own FST writer; the browser viewer is **self-contained, no CDN, no
   external fetch**. Metrics stay **stdlib-only** (Python `sqlite3`, no CLI/pip).
 - **Swarm realities** (proven across Phase F): you run on a GitHub runner that
@@ -333,7 +333,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      # Light toolchain only -- NOT OSS CAD Suite, and deliberately NOT the
+      # Light toolchain only, and deliberately NOT the
       # from-source UVM Verilator: this job measures the cheap tiers. `uvm` and
       # `trace-compare` are recorded 'not-run' (never 'fail', never guessed);
       # uvm-verilator.yml is what measures them.
@@ -410,7 +410,7 @@ workflow is the one that grows the committed store on `main`.
 
 ## Increment 3 — waves: FST generation + GTKWave flow (sibling-style) — **LANDED**
 
-Port the sibling's dev-only wave flow, adapted to this repo (no oss-cad-suite):
+Port the sibling's dev-only wave flow, adapted to this repo:
 - FST dumping under `-DWAVES`, compiled **only** into the wave targets (a
   `dv/common/*_wave_dump.svh` or the cocotb `WAVES=1` path) — the gate builds are
   untouched and stay byte-identical.
@@ -523,7 +523,7 @@ claiming a pass.
 `.devcontainer/devcontainer.json` builds — that JSON has no package list of its
 own and was left untouched) and to the root `Dockerfile`'s runtime stage, where
 only the CLI `fst2vcd` half is used and the fail-fast toolchain check gained
-`command -v fst2vcd`. Still apt, still **not** OSS CAD Suite. `.gitignore` gains
+`command -v fst2vcd`. Still apt. `.gitignore` gains
 `build/waves/` and `dv/pyuvm/wave_build/`; `dv/waves/*.gtkw` stays committed.
 
 Nothing was folded into the gate: no RTL, no trace emitter

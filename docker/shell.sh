@@ -16,7 +16,7 @@
 # Railway note: the gate is a run-to-completion batch job, so there is normally no
 # running container to attach to. Deploy it with KEEP_ALIVE=1 (or DEBUG_SHELL=1) —
 # see docker/entrypoint.sh — so the container stays up and `railway ssh` (this
-# script's railway mode) can connect. NOT OSS CAD Suite; no new deps.
+# script's railway mode) can connect. No new deps.
 # =============================================================================
 set -euo pipefail
 

@@ -8,7 +8,7 @@
 # BOUNDED model check -- the banner says "BMC depth N", not "proven".
 #
 # Toolchain: apt `yosys` + SymbiYosys (github.com/YosysHQ/sby) + `z3`.
-# NOT OSS CAD Suite (see CLAUDE.md / PLAN.md).
+# (see CLAUDE.md / PLAN.md).
 #
 # Degrades gracefully: a host without sby/yosys prints a skip line and exits 0,
 # so `make formal` never reds a box that simply lacks the formal tools. CI and
@@ -29,7 +29,7 @@ if ! command -v sby >/dev/null 2>&1 || ! command -v yosys >/dev/null 2>&1; then
     echo "[FORMAL] SKIP: no SymbiYosys/yosys on PATH."
     echo "[FORMAL] SKIP: install with 'apt-get install -y yosys z3' plus"
     echo "[FORMAL] SKIP:   git clone --depth 1 https://github.com/YosysHQ/sby && make -C sby install"
-    echo "[FORMAL] SKIP: (do NOT use OSS CAD Suite). The formal tier runs in CI/Railway."
+    echo "[FORMAL] SKIP: the formal tier runs in CI/Railway."
     exit 0
 fi
 
