@@ -123,7 +123,7 @@ make coverage && make formal && make metrics && make dashboard
   mirrored in **both** TBs and re-verified with `trace_compare`.
 - **`rtl/ucie2_pipe7_pkg.sv` encodings are frozen** unless a Phase I item un-FLAGs
   one (and updates the spec cross-check in the same change).
-- **No OSS CAD Suite.** Local box lint/elaborates the UVM tier only; full `--binary`
+- **Local box** lint/elaborates the UVM tier only; full `--binary`
   runs in CI/Railway/Codespaces.
 - Commit trailer: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
 

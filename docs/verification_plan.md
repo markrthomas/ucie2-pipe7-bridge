@@ -13,8 +13,6 @@ Two independently-authored testbenches drive the same DUT and are held to a
 | SV UVM run | `dv/uvm/vlt` (`make uvm`) | from-source Verilator `--binary` | **CI/Railway only** |
 | SV UVM (VCS mirror) | `dv/uvm/vcs` | VCS/Xcelium | authored, not run here |
 
-No OSS CAD Suite anywhere in the reproducible flow.
-
 ## Cycle-accurate cross-check
 
 - **Contract:** `dv/common/models/trace_format.py` — the canonical per-cycle CSV

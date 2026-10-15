@@ -3,7 +3,6 @@ name: UVM on Verilator + cycle-accurate cross-check
 # Builds UVM-capable Verilator from source (the apt Verilator can't elaborate
 # UVM), lints + runs the SV UVM env (--binary), runs the PyUVM tier, and then
 # proves the two testbenches track cycle-for-cycle (tools/trace_compare.py).
-# This project does NOT use OSS CAD Suite.
 
 on:
   push:
@@ -156,7 +155,7 @@ jobs:
       # never perturb lint/pyuvm/fcov/uvm/trace-compare. Reads no testbench and
       # touches no rtl/dv file. z3 is already installed above; add yosys + the
       # click module + SymbiYosys itself (shallow git clone, `make install` is
-      # a pure-Python copy -- no compile). NOT OSS CAD Suite. This must PASS.
+      # a pure-Python copy -- no compile). This must PASS.
       - name: Install SymbiYosys formal tools (yosys, sby, click)
         run: |
           set -euo pipefail

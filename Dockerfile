@@ -5,7 +5,7 @@
 # Reproduces the heavy UVM gate that cannot run on the ~8 GB local host: builds
 # UVM-capable Verilator from source (the apt Verilator can't elaborate UVM), then
 # runs `make uvm` (gen-vectors + lint + --binary build + run, UVM_ERROR-gated) --
-# the same canonical target CI runs. This project does NOT use OSS CAD Suite.
+# the same canonical target CI runs.
 #
 #   Build:  docker build -t ucie2-pipe7-uvm .
 #   Run  :  docker run --rm ucie2-pipe7-uvm            # full UVM gate
@@ -45,7 +45,7 @@ ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONIOENCODING=UTF-8 PYTHONUTF8=1
 # `make wave-check` layout drift-guard (Phase G increment 3) and the one-shot
 # FST -> VCD conversion `make wave-web` does at bundle time (increment 4). This
 # is a headless batch image, so the GUI half is never used; nothing in the gate
-# (lint/pyuvm/fcov/uvm/trace-compare) touches it. apt, NOT OSS CAD Suite.
+# (lint/pyuvm/fcov/uvm/trace-compare) touches it. apt.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       g++ make perl python3 python3-pip ccache z3 yosys git gtkwave \
       libgoogle-perftools-dev zlib1g zlib1g-dev ca-certificates \
@@ -53,7 +53,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # SymbiYosys (github.com/YosysHQ/sby) is pure Python -- `make install` just
 # copies sbysrc/*.py into place, so a shallow clone is fast (no compile). It
 # needs the `click` module at runtime. This is the formal tier (Phase F
-# increment 3, `make formal`); still NOT OSS CAD Suite.
+# increment 3, `make formal`).
 RUN pip3 install --break-system-packages --no-cache-dir click \
     && git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby \
     && make -C /tmp/sby install \

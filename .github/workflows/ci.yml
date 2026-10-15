@@ -1,6 +1,6 @@
 name: lint
 
-# Fast RTL lint on apt Verilator (NOT OSS CAD Suite). The PyUVM tier and the
+# Fast RTL lint on apt Verilator. The PyUVM tier and the
 # cycle-accurate cross-check need Verilator >= 5.036 (cocotb 2.x), which apt does
 # not yet ship, so they run in the uvm-verilator workflow against the from-source
 # Verilator 5.050 instead.

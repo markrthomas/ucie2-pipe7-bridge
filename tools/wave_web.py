@@ -27,7 +27,6 @@
 # tier runs this, and it never touches rtl/ or dv/ sources.
 #
 # Stdlib Python only. Toolchain: apt gtkwave (fst2vcd) + Verilator's FST writer
-# — NOT OSS CAD Suite.
 # -----------------------------------------------------------------------------
 import argparse
 import base64
@@ -133,7 +132,7 @@ def main(argv=None) -> int:
     if fst2vcd is None and dump.suffix.lower() != ".vcd":
         sys.exit(f"[WAVES] wave-web ERROR: '{args.fst2vcd}' is not on PATH, so "
                  f"the FST cannot be converted for the browser — "
-                 f"apt-get install -y gtkwave (NOT OSS CAD Suite)")
+                 f"apt-get install -y gtkwave")
     vcd = fst_to_vcd(dump, fst2vcd)
     if len(vcd) > args.max_mb * 1024 * 1024:
         sys.exit(f"[WAVES] wave-web ERROR: the VCD is "

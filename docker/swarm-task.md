@@ -9,7 +9,7 @@ the LAST Phase G increment.
   step, author it as a fenced YAML block in `docs/phase_g_env_enhancements.md`
   under a "### CI step — for maintainer to apply" heading. Touch no file under
   `.github/workflows/`. You MAY edit the `Dockerfile` and `.devcontainer/`.
-- **No OSS CAD Suite, and the viewer must be strictly self-contained: no CDN, no
+- **The viewer must be strictly self-contained: no CDN, no
   external fetch, no network at runtime.** Vendor every asset (WASM/JS/CSS/fonts)
   into the repo; the page must render offline by just opening the file.
 

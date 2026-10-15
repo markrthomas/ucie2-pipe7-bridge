@@ -5,7 +5,7 @@ WHY THIS EXISTS
 ---------------
 The formal tier (Phase F increment 3, `make formal`) drives SymbiYosys, which reads
 the RTL with yosys' own Verilog/SystemVerilog frontend. That frontend (yosys 0.33,
-the Ubuntu apt package -- we deliberately do NOT use OSS CAD Suite) does not accept
+the Ubuntu apt package) does not accept
 a wildcard package import:
 
     module pipe7_mac_ctrl_fsm

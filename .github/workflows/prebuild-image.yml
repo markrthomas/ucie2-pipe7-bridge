@@ -3,7 +3,7 @@ name: prebuild verilator-uvm image
 # The prebuild: build the from-source UVM-capable Verilator image (root
 # Dockerfile) ONCE and publish it to GHCR so every consumer — the Railway cloud
 # swarm, the CI uvm-verilator job, Codespaces — pulls a hot image instead of
-# rebuilding Verilator from source. This project does NOT use OSS CAD Suite.
+# rebuilding Verilator from source.
 
 on:
   workflow_dispatch:

@@ -29,7 +29,7 @@ Phase I and `docs/phase_i_design_completion.md`. New to the whole env: `docs/TUT
 - **RTL** in `rtl/`; **two TBs** in `dv/` (`dv/pyuvm/`, `dv/uvm/`) that **track
   cycle-accurately** — enforced by a shared golden model + shared vectors + a
   per-cycle trace that `tools/trace_compare.py` diffs (PLAN §5).
-- **Do NOT use OSS CAD Suite.** Local lint uses apt `verilator` + `iverilog`. The
+- **Toolchain.** Local lint uses apt `verilator` + `iverilog`. The
   UVM `--binary` flow uses a **from-source UVM-capable Verilator ≥ 5.050** (the
   apt Verilator cannot elaborate UVM), same approach as the `IP-axi-to-2apbs`
   template.
@@ -61,13 +61,12 @@ never edit it structurally. `make eda-playground` regenerates a paste-ready EDA
 Playground bundle in `dv/uvm/eda_playground/` (off-gate; `make eda-check` guards
 drift). A local UVM-capable Verilator + `UVM_HOME` exist at
 `~/verilator{,/test_regress/t/uvm}`, so `make lint-uvm` **does** elaborate
-locally (unset `VERILATOR_ROOT`, which oss-cad-suite exports).
+locally (unset `VERILATOR_ROOT` if your shell exports one).
 
 Two **post-gate, additive** tiers sit outside that gate and must never be folded
 into it: `make coverage` (advisory RTL line coverage, `[COV] line=NN.N%`) and
 `make formal` (SymbiYosys **bounded** model check, `[FORMAL] <job>: BMC depth N
-PASSED`). `make formal` uses apt `yosys` + SymbiYosys (YosysHQ/sby) + `z3` — still
-**not** OSS CAD Suite — and skips with exit 0 where those are absent. Its
+PASSED`). `make formal` uses apt `yosys` + SymbiYosys (YosysHQ/sby) + `z3`, and skips with exit 0 where those are absent. Its
 properties live in `formal/*_formal.sv` boundary wrappers; `rtl/` is never edited
 (see `README.md` → "Formal").
 
@@ -100,11 +99,10 @@ pl_flit_cancel, UCIe-2.0 management mapping) are all **RESOLVED** in Phase I
 
 ## Local toolchain reality
 
-The `verilator`/`iverilog` on this host's PATH are **oss-cad-suite** builds. This
-project must not *depend* on oss-cad-suite, so the reproducible envs
-(`.devcontainer/`, `Dockerfile*`, CI) install apt `verilator`/`iverilog` + a
-from-source UVM Verilator. The Makefile takes `VERILATOR`/`IVERILOG` overrides so
-local runs work with whatever is on PATH. `cocotb` + `pyuvm` 4.0.1 are present
+The reproducible envs (`.devcontainer/`, `Dockerfile*`, CI) install apt
+`verilator`/`iverilog` + a from-source UVM Verilator. The Makefile takes
+`VERILATOR`/`IVERILOG` overrides so local runs work with whatever is on PATH;
+`LOCAL=1` opts in to a from-source `~/verilator` + `/usr/bin/python3` env. `cocotb` + `pyuvm` 4.0.1 are present
 locally (PyUVM tier runs here). The functional-coverage tier (`make fcov`,
 Phase C item 12) uses `cocotb_coverage` on the **independent Icarus** engine in
 CI; it can also be run locally under Verilator (`make fcov FCOV_SIM=verilator`,
@@ -116,7 +114,7 @@ installs the missing light-tier pieces via apt+pip; `make tools-check` reports
 only (non-zero exit iff a *core* tool is absent — safe as a CI/audit gate). The
 from-source UVM Verilator is opt-in (`make tools TOOLS_HEAVY=1`) since it OOM-heavy
 builds for minutes; logic in `tools/check_tools.sh`, tracking the `Dockerfile*`
-recipes (still NOT OSS CAD Suite).
+recipes.
 
 ## Repo / workflow gotchas
 

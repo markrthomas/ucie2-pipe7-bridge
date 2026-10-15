@@ -1,5 +1,5 @@
 # PyUVM-on-cocotb tier (PLAN Phase C). Runs locally under whatever cocotb
-# simulator is on PATH; CI uses apt verilator (NOT OSS CAD Suite).
+# simulator is on PATH; CI uses apt verilator.
 #
 #   make            # default: smoke test (Item 11 grows this into the full env)
 #   make SIM=icarus # pick a simulator (default: verilator)
@@ -83,7 +83,7 @@ endif
 #     EXTRA_ARGS) so VM_TRACE_FST=1 and cocotb's verilator main writes FST; and
 #   * adds `--trace --trace-file <fst>` at RUN time only (SIM_ARGS), which is what
 #     actually opens the dump.
-# Verilator's own FST writer + apt gtkwave. NOT OSS CAD Suite.
+# Verilator's own FST writer + apt gtkwave.
 WAVE_DIR  ?= $(abspath ../../build/waves)
 WAVE_FILE ?= $(WAVE_DIR)/$(MODULE).fst
 

@@ -79,9 +79,9 @@ until Item 0 signs off on it.**
    - `dv/pyuvm/` — PyUVM-on-cocotb (runs under apt/system Verilator).
    - `dv/uvm/` — SystemVerilog UVM under **latest UVM-capable Verilator**
      (built from source, `--binary`).
-3. **No OSS CAD Suite.** Toolchain is apt `verilator` + `iverilog` for local
+3. Toolchain is apt `verilator` + `iverilog` for local
    lint, and a **from-source Verilator ≥ 5.050** for the UVM `--binary` flow
-   (modeled on `~/proj/IP-axi-to-2apbs`, which also avoids oss-cad-suite).
+   (modeled on `~/proj/IP-axi-to-2apbs`).
 4. **Railway container:** a `Dockerfile` + `.railway/railway.ts` (IaC) that runs
    the full DV gate as a run-to-completion batch job (no listening port).
 5. **GitHub origin** `git@github.com:markrthomas/ucie2-pipe7-bridge.git` with a
@@ -240,7 +240,7 @@ predecessor (only the FDI front-end + top are new).
   outside the gate: it runs as a post-gate step in `uvm-verilator.yml` (after
   `trace-compare`, `continue-on-error`), never inside a timed DV run.
 - [x] **F3. Formal (SymbiYosys BMC)** — `make formal` runs three **bounded** model
-  checks over apt `yosys` + SymbiYosys (YosysHQ/sby) + `z3` (**not** oss-cad-suite):
+  checks over apt `yosys` + SymbiYosys (YosysHQ/sby) + `z3`:
   `ucie2_fdi_link_fsm` (**no illegal FSM state** — `pl_state_sts` is always a legal
   `fdi_state_e`, the FLAGGED encoding of cross-check §C; plus stall-handshake
   well-formedness), `pipe7_mac_ctrl_fsm` (**PIPE 7.1 §8.4.1 rate/width legality** —
@@ -342,8 +342,8 @@ predecessor (only the FDI front-end + top are new).
   dump hierarchy with GTKWave's `fst2vcd` and fails naming `file:line` for any
   dead net path or moved bit range, and **skips with exit 0** where `fst2vcd` is
   absent. Layouts are committed, dumps are git-ignored. apt `gtkwave` added to
-  `Dockerfile.dev` (the `.devcontainer` image) and the root `Dockerfile` — still
-  **not** OSS CAD Suite. `make waves-uvm` is deferred (no UVM-capable Verilator
+  `Dockerfile.dev` (the `.devcontainer` image) and the root `Dockerfile`.
+  `make waves-uvm` is deferred (no UVM-capable Verilator
   on this host or the light CI job, so it could not be built or proven).
 - [x] **G4. Waves: self-contained browser viewer** — **closes Phase G**
   (`docs/phase_g_env_enhancements.md` increment 4) — `make wave-web

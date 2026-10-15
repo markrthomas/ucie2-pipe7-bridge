@@ -13,7 +13,7 @@
 #   waves    `make wave*`  (off-gate)                 -> apt gtkwave
 #   heavy    `make uvm` --binary (CI/Railway only)    -> Verilator >=5.050 from src
 #
-# This project does NOT use OSS CAD Suite; the light tiers install from apt + pip
+# The light tiers install from apt + pip
 # exactly as the containers do. The heavy from-source Verilator build is a
 # multi-minute, several-hundred-MB operation, so it is OPT-IN (TOOLS_HEAVY=1);
 # otherwise it is reported with the exact build commands. Missing OPTIONAL tools

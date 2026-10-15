@@ -34,10 +34,8 @@ The reason for the split is **RAM + toolchain**:
   build+run happens in CI, or on a remote runner you fire yourself.
 - The apt Verilator (5.020) **cannot elaborate UVM** at all — it is fine for the
   RTL `lint` and the PyUVM tier, but the UVM tier needs the from-source build.
-- **This project does NOT depend on OSS CAD Suite.** The reproducible
-  environments install apt `verilator`/`iverilog` + a from-source UVM Verilator.
-  Your local box may *happen* to have oss-cad-suite on `PATH`; the Makefile works
-  around that (see §2).
+- The reproducible environments install apt `verilator`/`iverilog` + a
+  from-source UVM Verilator (see §2 for the opt-in `LOCAL` env).
 
 ---
 
@@ -68,33 +66,27 @@ gate); optional gaps are fine. Logic lives in `tools/check_tools.sh`.
 
 ### 1.2 Understand your local Verilator situation
 
-Run `command -v verilator`. On the maintainer's box this resolves to an
-**oss-cad-suite** build (it also exports `VERILATOR_ROOT`). That is fine — the
-Makefile has a **`LOCAL` autodetect** (§2) that quietly swaps in a clean
-toolchain for the gate targets. You do not need to fix your `PATH`.
+Run `command -v verilator`. The gate targets use whatever it resolves to
+(override with `VERILATOR=`). If you built a UVM-capable Verilator into
+`~/verilator`, the opt-in **`LOCAL=1`** mode (§2) swaps in a clean toolchain for
+the gate targets.
 
 ---
 
-## 2. How `LOCAL` autodetect works (and when to override it)
+## 2. How `LOCAL` works (and when to use it)
 
-The Makefile decides it is "local" when **both** are true:
-
-1. oss-cad-suite is on `PATH` / in `VERILATOR_ROOT`, and
-2. a from-source Verilator exists at `~/verilator`.
-
-When `LOCAL=1`, the plain gate targets (`lint`, `pyuvm`, `fcov`, `lint-uvm`,
+`LOCAL` is **off by default**; set `LOCAL=1` on a box with a from-source
+Verilator at `~/verilator`. Then the plain gate targets (`lint`, `pyuvm`, `fcov`, `lint-uvm`,
 `coverage`) auto-wrap themselves in a clean environment: they drop
 `VERILATOR_ROOT`, put `~/verilator/bin` and `/usr/bin` first on `PATH`, use
 `/usr/bin/python3` (the interpreter that actually has cocotb), and point
-`UVM_HOME` at the bundled UVM library. In **CI/Railway** (clean `PATH`, no
-`~/verilator`) this is inert and everything runs canonically.
-
-You rarely touch this, but two overrides exist:
+`UVM_HOME` at the bundled UVM library. In **CI/Railway** it is off and
+everything runs canonically.
 
 ```bash
-make fcov LOCAL=0      # force the canonical CI toolchain on your box
+make lint LOCAL=1     # use the ~/verilator env
+make fcov LOCAL=0     # force the canonical CI toolchain (the default)
 make fcov-ci          # same thing, shorthand: the -ci targets pin LOCAL=0
-make lint LOCAL=1     # force local mode
 ```
 
 Use `-ci` variants when you want to reproduce *exactly* what CI does locally.
@@ -263,8 +255,7 @@ make metrics     # append ONE DV-metrics row to metrics/metrics.db (advisory)
 make dashboard   # regenerate metrics/dashboard.html (self-contained, no CDN)
 ```
 
-- `make formal` uses apt `yosys` + SymbiYosys + `z3` (still **not** OSS CAD
-  Suite); it **skips cleanly with exit 0** if `sby` is absent. Properties live in
+- `make formal` uses apt `yosys` + SymbiYosys + `z3`; it **skips cleanly with exit 0** if `sby` is absent. Properties live in
   `formal/*_formal.sv` boundary wrappers — `rtl/` is never edited.
 - `make metrics METRICS_ARGS=--once-per-sha` is idempotent (a clean tree whose
   sha+env already has a row appends nothing), so a CI job can commit the row back
@@ -368,9 +359,9 @@ make clean
 |---------|-------------|
 | `make uvm` locally → `Set UVM_HOME to the bundled Verilator UVM dir…` | Expected: the root target doesn't wire the from-source toolchain (it OOMs small boxes). Use `make lint-uvm`, or `make uvm-remote`, or force it per §6.2. |
 | `make uvm` (forced) OOMs / hangs | The `--binary` precompiled-header compile needs several GB. Use a remote runner (§6.3) or CI. |
-| A gate picks the wrong `verilator`/`python` | oss-cad-suite is shadowing them. The `LOCAL` autodetect normally fixes this; force it with `LOCAL=1`, or reproduce CI with the `-ci` variant. |
+| A gate picks the wrong `verilator`/`python` | Another install is first on `PATH`. Pass `VERILATOR=`/`PYTHON=`, use `LOCAL=1` (from-source `~/verilator`), or reproduce CI with the `-ci` variant. |
 | `fatal error: lz4.h: No such file or directory` during a build | The from-source Verilator's FST writer needs `liblz4-dev`. `make waves` deliberately does **not** use the from-source Verilator for this reason; if you hit it elsewhere, `sudo apt-get install liblz4-dev`. |
-| `make fcov` fails oddly on the local box | oss-cad's Icarus/Python pollute the env; run `make fcov` (LOCAL mode uses Verilator) or see the local-fcov clean-env note. |
+| `make fcov` fails oddly on the local box | A too-old system Icarus (11) or a polluted Python env; run `make fcov LOCAL=1` (uses Verilator) or see the local-fcov clean-env note. |
 | `make formal` "does nothing" | It skips with exit 0 when `sby` is absent. Install with `make tools` (formal tier). |
 | A remote run keeps billing | You left `KEEP_ALIVE`/a codespace up. `APPLY=1 make uvm-remote-down RUNNER=…`. |
 

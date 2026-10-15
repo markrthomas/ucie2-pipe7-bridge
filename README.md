@@ -75,7 +75,7 @@ make tools-check # report only, install nothing (exit non-zero if a CORE tool is
 # formal (yosys/z3/sby) and waves (gtkwave) are optional. The from-source UVM-capable
 # Verilator (only for the CI/Railway `make uvm` --binary gate) is opt-in and slow:
 make tools TOOLS_HEAVY=1   # also build Verilator >=5.050 from source into ~/verilator
-# NOT OSS CAD Suite (see "Toolchain policy"). Logic: tools/check_tools.sh.
+# See "Toolchain policy". Logic: tools/check_tools.sh.
 
 make lint       # RTL strict lint (Verilator -Wall)
 make pyuvm      # PyUVM-on-cocotb tier (default round-trip; needs a cocotb simulator)
@@ -94,7 +94,7 @@ make b2b        # back-to-back two-bridge configs (PyUVM) — see "Back-to-back"
 make b2b LEN=64 # same LEN/SEED/PROFILE knobs as the single-bridge round-trip
 
 # SV UVM env: LINT ONLY locally (the full --binary build OOMs a small box).
-# Needs a UVM-capable Verilator >= 5.050 + its bundled UVM lib (NOT OSS CAD Suite):
+# Needs a UVM-capable Verilator >= 5.050 + its bundled UVM lib:
 make lint-uvm VERILATOR=~/verilator/bin/verilator \
               UVM_HOME=~/verilator/test_regress/t/uvm
 ```
@@ -354,8 +354,7 @@ make wave-check                    # then re-prove it
 ```
 
 Toolchain: Verilator's own FST writer + **apt `gtkwave`** (`Dockerfile.dev`, which
-`.devcontainer/` builds, and the root `Dockerfile` for `fst2vcd`) — **not** OSS CAD
-Suite. Opening the GUI needs a display; `make wave-check` is the automatable half.
+`.devcontainer/` builds, and the root `Dockerfile` for `fst2vcd`). Opening the GUI needs a display; `make wave-check` is the automatable half.
 
 ### Browser viewer — `make wave-web` (no desktop app, no X11)
 
@@ -425,7 +424,7 @@ make formal FORMAL_JOBS=pipe7_gearbox   # one job
 ```
 
 A **bounded** model check (BMC) of three tractable blocks, driven by
-**SymbiYosys** over apt `yosys` + `z3` — *not* OSS CAD Suite. Every DUT input is
+**SymbiYosys** over apt `yosys` + `z3`. Every DUT input is
 free, so each property holds for **all** input sequences up to the stated depth.
 This is **not** an unbounded proof: the banner reports `BMC depth N`, and nothing
 here is `k`-induction.
@@ -605,7 +604,7 @@ glob `rtl/*.sv`) and the byte-identical cross-check trace are unaffected.
 
 ## Toolchain policy
 
-This project **does not use OSS CAD Suite.** The reproducible environments
+The reproducible environments
 (`.devcontainer/`, `Dockerfile*`, CI) install apt `verilator`/`iverilog` for lint
 and the PyUVM tier, and build a **UVM-capable Verilator ≥ 5.050 from source** for
 the SV UVM `--binary` gate. Locally the Makefile takes `VERILATOR`/`IVERILOG`
@@ -614,7 +613,7 @@ overrides so it runs with whatever is on your PATH.
 ### Bootstrapping the toolchain — `make tools`
 
 `make tools` checks every tier's tools and installs the **missing** ones (apt +
-pip, mirroring the containers above — never OSS CAD Suite). `make tools-check` is
+pip, mirroring the containers above). `make tools-check` is
 the read-only form: it reports the same table and installs nothing, exiting
 non-zero only if a **core** tool is absent (optional gaps are non-fatal), so it is
 safe to run as a CI/audit gate. The logic lives in `tools/check_tools.sh` and, like

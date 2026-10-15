@@ -1,7 +1,7 @@
 # -----------------------------------------------------------------------------
 # ucie2-pipe7-bridge — DEV image (Codespaces devcontainer + local RTL/PyUVM).
 #
-# apt iverilog + verilator (NOT OSS CAD Suite) + a Python venv with cocotb/pyuvm.
+# apt iverilog + verilator + a Python venv with cocotb/pyuvm.
 # Runs the local gates: `make lint` and `make pyuvm`. The apt Verilator here is
 # NOT UVM-capable — the SV UVM --binary gate uses the root `Dockerfile` (Verilator
 # from source) on CI/Railway.
@@ -23,7 +23,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # and the bundle-time FST -> VCD conversion in `make wave-web` (increment 4 —
 # which needs nothing else: the viewer it inlines is committed in
 # dv/waves/viewer/ and the bundler is stdlib Python).
-# Still apt, still NOT OSS CAD Suite. It is OFF the gate — nothing in
+# Still apt. It is OFF the gate — nothing in
 # lint/pyuvm/fcov/uvm/trace-compare needs it.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential ca-certificates curl git g++ make \
