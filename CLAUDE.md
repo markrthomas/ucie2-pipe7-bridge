@@ -16,7 +16,8 @@ paths, Gen6 end-to-end + rate switch, coverage closure, and H3b (full-duplex SV 
 proof — the credit seam was evaluated and is not needed). A complete, green environment
 with a Gen5+Gen6 datapath verified by both TBs + B2B integration. **Resuming an AI
 session? Read `docs/AI_RESTART.md`** — the live work queue + handoff — then `PLAN.md` §7
-Phase I and `docs/phase_i_design_completion.md`. New to the whole env: `docs/TUTORIAL.md`.
+Phase I and `docs/phase_i_design_completion.md`. New to the whole env: `docs/TUTORIAL.md`
+(environment/commands) and `docs/DESIGN_AND_TB_TUTORIAL.md` (RTL + TB internals).
 
 - **RTL/TB starting point:** `~/proj/ucie_rdi_to_pcie6_pipe7` (UCIe 1.0 RDI → PCIe
   6.x / PIPE 7.1). Mine its `src/`, `test/cocotb`, `test/uvm` for reusable blocks;

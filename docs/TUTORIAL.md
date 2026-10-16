@@ -369,6 +369,9 @@ make clean
 
 ## Where to go next
 
+- **`docs/DESIGN_AND_TB_TUTORIAL.md`** — the companion to this file: the RTL design
+  block-by-block and how the two testbenches cross-check it (the internals, not the
+  environment).
 - **`PLAN.md`** — the scope, the frozen FDI/PIPE boundary contract, and the
   phased build-out.
 - **`docs/verification_plan.md`** — the DV plan in depth.

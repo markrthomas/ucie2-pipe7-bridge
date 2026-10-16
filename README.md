@@ -19,7 +19,9 @@ SystemVerilog UVM-on-Verilator).
 
 > **New here?** **[`docs/TUTORIAL.md`](docs/TUTORIAL.md)** is a hands-on,
 > start-to-finish tour of this environment — what runs where (local / CI /
-> remote), every gate, and a troubleshooting table.
+> remote), every gate, and a troubleshooting table. For the design and testbench
+> *internals* (RTL block-by-block + how the two TBs cross-check), read
+> **[`docs/DESIGN_AND_TB_TUTORIAL.md`](docs/DESIGN_AND_TB_TUTORIAL.md)**.
 
 ## Architecture (target)
 
