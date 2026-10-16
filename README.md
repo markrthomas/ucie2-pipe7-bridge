@@ -13,7 +13,9 @@ SystemVerilog UVM-on-Verilator).
 > end-to-end + rate switch, coverage closure, and H3b (full-duplex SV UVM + the
 > B2B trace gate + long-burst seam proof): see
 > **`docs/phase_i_design_completion.md`** and the AI handoff
-> **`docs/AI_RESTART.md`**. Full plan in **`PLAN.md`**; orientation in **`CLAUDE.md`**.
+> **`docs/AI_RESTART.md`**. Remaining future increments are tracked as **Phase J**
+> (`PLAN.md` §7, detail in **`docs/phase_j_future_increments.md`**). Full plan in
+> **`PLAN.md`**; orientation in **`CLAUDE.md`**.
 
 > **New here?** **[`docs/TUTORIAL.md`](docs/TUTORIAL.md)** is a hands-on,
 > start-to-finish tour of this environment — what runs where (local / CI /
@@ -409,7 +411,7 @@ make wave-web TEST=smoke           # builds the dump itself if it is missing
 deliberately deferred: that flow needs the from-source UVM Verilator, which
 neither this host nor the light CI job has, so a `$dumpfile` hook there could not
 be built, run or proven. See `docs/phase_g_env_enhancements.md` (increment 3,
-"Deferred").
+"Deferred"); tracked as **Phase J item J5** (`PLAN.md` §7 → Phase J).
 
 ## Formal (SymbiYosys BMC, post-gate)
 
