@@ -95,6 +95,49 @@ The top is pure integration: it instantiates every submodule and wires the two
 datapaths plus the two config planes. Parameters `FDI_W = 128`, `PW = 80` (the
 active PIPE width the bridge passes down; the datapath modules default to 160).
 
+The whole module at a glance — the two datapaths, the two clock domains, and the
+two address-demuxed config planes:
+
+```mermaid
+flowchart LR
+    LP["FDI / Protocol Layer<br/>(controller side)"]
+    PHY["PIPE 7.1 PHY<br/>(MAC-facing)"]
+
+    subgraph LCLK["lclk domain (FDI / LPIF)"]
+      direction TB
+      ING["ucie2_fdi_ingress"]
+      EGR["ucie2_fdi_egress"]
+      LFSM["ucie2_fdi_link_fsm"]
+    end
+
+    subgraph PCLK["pclk domain (PIPE / MAC)"]
+      direction TB
+      DP["pipe7_mac_datapath_ra<br/>framer / deframer / gen6"]
+      RXF["pipe7_rx_burst_fifo"]
+      CFSM["pipe7_mac_ctrl_fsm"]
+      MBUS["pipe7_msgbus_master"]
+      MGMT["ucie2_mgmt_sideband"]
+      RFP["pipe7_regfile @0x400<br/>PHY-Tx-ctrl shadow"]
+      RFM["pipe7_regfile @0x010<br/>mgmt window"]
+    end
+
+    TXC(["tx_cdc<br/>elastic buf"])
+    RXC(["rx_cdc<br/>elastic buf"])
+
+    LP -->|"lp_data 128b"| ING -->|"129b block"| TXC --> DP -->|"tx_data"| PHY
+    PHY -->|"rx_data"| DP --> RXF --> RXC --> EGR -->|"pl_data"| LP
+    LP <-->|"lp_state_req / pl_state_sts"| LFSM
+    LFSM -. "link_active" .-> ING
+    LFSM -. "link_active" .-> EGR
+
+    REQ["req_* (PowerDown/Rate/Width)"] --> CFSM -->|"rate / width / power_down"| DP
+    MBREQ["mb_req_*"] --> DEMUX{{"0x010 ≤ addr &lt; 0x020 ?"}}
+    DEMUX -->|"yes"| MGMT --> RFM
+    DEMUX -->|"no"| MBUS --> RFP
+    MBUS <-->|"m2p / p2m"| PHY
+    RFP -. "pam4 level" .-> DP
+```
+
 **Ports, by interface:** FDI TX (`lp_data/lp_valid/lp_irdy/lp_is_os`, `pl_trdy`
 out), FDI RX (`pl_data/pl_valid/pl_is_os/pl_flit_cancel`), the FDI link handshake
 (`lp_state_req/pl_state_sts`, `lp_linkerror`, `pl_stallreq/lp_stallack`, plus
@@ -140,6 +183,19 @@ because the Gen6 ports sit idle unless `rate` is switched to Gen6.
 
 ## 3. The TX datapath, block by block
 
+```mermaid
+flowchart LR
+    LP["lp_data / lp_valid<br/>lp_irdy / lp_is_os"] --> ING["ucie2_fdi_ingress<br/>blk = {is_os, data128}<br/>(gated by link_active)"]
+    ING -. "pl_trdy (backpressure)" .-> LP
+    ING --> TXC["tx_cdc<br/>pipe7_cdc_elastic_buf<br/>lclk → pclk · depth-16 Gray"]
+    TXC --> DP["pipe7_mac_datapath_ra<br/>data-phase FSM · owns TxElecIdle"]
+    DP --> MUX{{"rate == GEN6 ?"}}
+    MUX -->|"no (Gen5)"| FR["pipe7_tx_framer_gb<br/>128b/130b gearbox<br/>sync = is_os ? OS : DATA<br/>emit ≥ PIPE_WIDTH, LSB-first"]
+    MUX -->|"yes (Gen6)"| G6["pipe7_gen6_datapath<br/>raw pass-through"]
+    FR --> OUT["tx_data / tx_data_valid"]
+    G6 --> OUT
+```
+
 **`ucie2_fdi_ingress`** (lclk, combinational). One FDI transfer == one 128-bit
 block. `pl_trdy = blk_ready & link_active`, `blk_valid = lp_valid & lp_irdy &
 pl_trdy`, and crucially **`blk_is_os = lp_is_os`** — this is where the OS/data type
@@ -173,6 +229,19 @@ PHY-Tx-control shadow regfile.
 
 ## 4. The RX datapath, block by block
 
+```mermaid
+flowchart LR
+    IN["rx_data / rx_valid"] --> DP["pipe7_mac_datapath_ra"]
+    DP --> MUX{{"rate == GEN6 ?"}}
+    MUX -->|"no (Gen5)"| DF["pipe7_rx_deframer_gb<br/>sync-header hunt + 1-bit slip<br/>→ block_locked / sync_error"]
+    MUX -->|"yes (Gen6)"| G6["pipe7_gen6_datapath<br/>raw pass-through"]
+    DF --> FIFO["pipe7_rx_burst_fifo<br/>depth-4 skid<br/>0/1/2 blk/clk → 1/clk<br/>overflow = dropped block"]
+    G6 --> FIFO
+    FIFO --> RXC["rx_cdc<br/>pipe7_cdc_elastic_buf<br/>pclk → lclk<br/>wr_error = rx_overflow"]
+    RXC --> EGR["ucie2_fdi_egress<br/>pl_is_os = blk_is_os<br/>pl_flit_cancel = pl_valid &amp; blk_err"]
+    EGR --> OUT["pl_data / pl_valid<br/>pl_is_os / pl_flit_cancel"]
+```
+
 **`pipe7_rx_deframer_gb`** (Gen5). The 128b/130b deframer, and the **origin of
 `block_locked` and `sync_error`**. It hunts for a legal sync header (`DATA` or
 `OS`) with single-bit slip: a legal header → emit `pl_data/pl_is_os`, set
@@ -197,6 +266,49 @@ that rode through an overflow.
 
 ## 5. The control / config plane
 
+The two config planes share one request port, demuxed by address; the response is
+muxed back:
+
+```mermaid
+flowchart TB
+    MBREQ["mb_req_addr / mb_req_data / mb_req_write<br/>(granted only when both planes idle)"] --> D{{"mgmt_space =<br/>0x010 ≤ addr &lt; 0x020 ?"}}
+    D -->|"true"| MGMT["ucie2_mgmt_sideband<br/>requester ⇄ completer<br/>over 8-bit sb_m2c / sb_c2m"]
+    D -->|"false"| MBUS["pipe7_msgbus_master<br/>M2P / P2M 8-bit frames"]
+    MGMT --> RFM["pipe7_regfile @0x010<br/>mgmt window"]
+    MBUS --> RFP["pipe7_regfile @0x400<br/>PHY-Tx-ctrl shadow →<br/>Gen6 pam4_restricted_levels"]
+    MBUS <-->|"m2p / p2m_message_bus"| PHY["PIPE PHY"]
+    MGMT --> RSP["mb_rsp_* = mgmt if mgmt_rsp_valid else mbus"]
+    MBUS --> RSP
+```
+
+The FDI link state machine (`link_active` gates all datapath flow). Every
+host-requested transition runs the LPIF stall handshake (assert `pl_stallreq`, wait
+`lp_stallack`, then commit); `lp_linkerror` forces a sticky `FDI_LINKERROR` from any
+state:
+
+```mermaid
+stateDiagram-v2
+    [*] --> FDI_RESET
+    FDI_RESET --> FDI_ACTIVE: request ACTIVE
+    FDI_ACTIVE --> FDI_L1: request
+    FDI_ACTIVE --> FDI_L2: request
+    FDI_ACTIVE --> FDI_LINKRESET: request
+    FDI_ACTIVE --> FDI_RETRAIN: request
+    FDI_ACTIVE --> FDI_DISABLED: request
+    FDI_L1 --> FDI_ACTIVE: request
+    FDI_L2 --> FDI_ACTIVE: request
+    FDI_LINKRESET --> FDI_ACTIVE: request
+    FDI_DISABLED --> FDI_ACTIVE: request
+    FDI_RETRAIN --> FDI_ACTIVE: after RETRAIN_CYCLES
+    FDI_ACTIVE --> FDI_LINKERROR: lp_linkerror
+    FDI_LINKERROR --> FDI_ACTIVE: request (clears)
+    note right of FDI_ACTIVE
+      link_active = 1 (data flows only here).
+      lp_linkerror from ANY state → FDI_LINKERROR (sticky).
+      Every host transition = stall handshake.
+    end note
+```
+
 **`ucie2_fdi_link_fsm`** (lclk). The FDI/LPIF state machine. It produces
 `link_active = (state_q == FDI_ACTIVE)` — the gate on all datapath flow. Host-driven
 transitions use the LPIF stall handshake (assert `pl_stallreq`, wait `lp_stallack`,
@@ -210,6 +322,23 @@ the PHY `phy_status` handshake, with a legality check (`rate/width` change legal
 only in P0/P1) and a 1024-cycle watchdog. While `busy`, it forces TxElecIdle high
 (the top ORs this over the datapath's own EI). It pulses `done` on success,
 `req_error` on an illegal request or a watchdog timeout.
+
+```mermaid
+stateDiagram-v2
+    [*] --> S_IDLE
+    S_IDLE --> S_PWR_WAIT: REQ_POWER
+    S_IDLE --> S_RW_PREP: REQ_RATE / REQ_WIDTH (P0/P1 only)
+    S_IDLE --> S_IDLE: illegal req → req_error
+    S_PWR_WAIT --> S_IDLE: phy_status → done
+    S_RW_PREP --> S_RW_WAIT_OK: PCLK_IS_PHY_INPUT
+    S_RW_PREP --> S_RW_APPLY_WAIT: else
+    S_RW_WAIT_OK --> S_RW_APPLY_WAIT: pclk_change_ok
+    S_RW_APPLY_WAIT --> S_IDLE: phy_status → done
+    note right of S_PWR_WAIT
+      Any wait state: watchdog TIMEOUT_CYCLES (1024)
+      → req_error, recover to S_IDLE.
+    end note
+```
 
 **`pipe7_msgbus_master`** (pclk). The PIPE 7.1 MAC↔PHY config master: an 8-bit
 M2P/P2M FSM that frames read / write-committed / write-uncommitted transactions
@@ -244,6 +373,16 @@ burst FIFO → sticky `rx_overflow_q` → fed as `wr_error` into rx_cdc → carr
 per-block as `rd_error` to lclk → `blk_err` in egress → `pl_flit_cancel`. The error
 bit the CDC primitive carries (unused on TX) is exactly this path.
 
+```mermaid
+flowchart LR
+    DF["pipe7_rx_deframer_gb"] --> BL["block_locked"]
+    DF --> SE["sync_error<br/>(illegal header while locked)"]
+    OV["pipe7_rx_burst_fifo<br/>accept ≠ push_cnt"] -->|"overflow"| STK["rx_overflow_q<br/>(sticky)"]
+    STK -->|"wr_error"| RXC["rx_cdc elastic buf"]
+    RXC -->|"rd_error (per block)"| EGR["ucie2_fdi_egress<br/>blk_err"]
+    EGR --> FC["pl_flit_cancel =<br/>pl_valid &amp; blk_err"]
+```
+
 ---
 
 # Part II — the testbenches (DV in `dv/`)
@@ -265,6 +404,33 @@ They are kept honest **three** ways, so no single-TB bug can hide:
 
 If a trace diverges, the offending cycle+column is printed. If a TB disagrees with
 the golden model, the bug is localized to exactly one of {DUT, SV-TB, Python-TB}.
+
+```mermaid
+flowchart TB
+    VEC["shared vectors<br/>dv/common/vectors/build/*.vec<br/>($readmemh-compatible)"]
+    GM["shared golden model<br/>dv/common/models/"]
+    DUT["ucie2_pipe7_bridge<br/>(same RTL, both TBs)"]
+
+    subgraph PY["PyUVM-on-cocotb — local + CI"]
+      PYT["test + BridgeScoreboard"]
+      PYTR["build/bridge.trace"]
+    end
+    subgraph SV["SV UVM-on-Verilator — CI / Railway"]
+      SVT["test + bridge_scoreboard"]
+      SVTR["obj/bridge.trace"]
+    end
+
+    VEC --> PYT
+    VEC --> SVT
+    PYT --> DUT
+    SVT --> DUT
+    GM -. "self-check" .-> PYT
+    GM -. "self-check" .-> SVT
+    PYT --> PYTR
+    SVT --> SVTR
+    PYTR --> TC["tools/trace_compare.py<br/>byte-for-byte per-cycle diff"]
+    SVTR --> TC
+```
 
 ## 8. The shared golden model and vectors (`dv/common/`)
 
@@ -306,6 +472,18 @@ vector (`frame_words`) for the external-PCIe B2B config, whose SV tier has no fr
   is what lets any `LEN` round-trip without dropping flits.
 - `FdiRxMonitor` (samples `pl_data` when `pl_valid`), `PipeTxMonitor` (samples
   `tx_data` when `tx_data_valid`, tracks lock + sync errors), `BridgeScoreboard`.
+
+```mermaid
+flowchart LR
+    SEQ["FdiSeq → FdiDriver<br/>(drives 1 flit/lclk,<br/>honors pl_trdy)"] --> DUT["ucie2_pipe7_bridge (DUT)"]
+    LB["_loopback (PHY model)<br/>rx_data ⟵ tx_data, +1 pclk"] <--> DUT
+    SA["_stall_ack<br/>lp_stallack ⟵ pl_stallreq"] <--> DUT
+    DUT --> TXM["PipeTxMonitor<br/>tx_data · lock · sync_err"]
+    DUT --> RXM["FdiRxMonitor<br/>pl_data @ pl_valid"]
+    TXM --> SB["BridgeScoreboard<br/>3-way check_phase"]
+    RXM --> SB
+    SEQ -. "driven flits" .-> SB
+```
 
 **The default round-trip (`test_roundtrip.RoundtripTest`).** `run_phase` starts two
 coincident 2 ns clocks, resets, then `start_soon`s two helpers — `_loopback` (the
@@ -380,6 +558,16 @@ The **`#0.1` post-edge sampling** (in every forked task and the trace loop) read
 settled, registered values after the edge — the SV equivalent of cocotb's post-edge
 reads. Fork order + `#0.1` + the shared column list == a byte-identical trace.
 
+```mermaid
+flowchart TB
+    A["reset: idle all inputs, read +RUN_PCLK/+TRACE plusargs,<br/>write hand-mirrored header (zero sim-time)"]
+    B["wait (pclk_rst_n === 1)"]
+    C["sample cycle 0 BEFORE the fork<br/>@(posedge pclk) #0.1 $fwrite"]
+    D["fork ... join_none — EXACT order:<br/>1 loopback.run · 2 driver.stall_ack<br/>3 tx_mon.capture · 4 rx_mon.capture<br/>5 driver.drive · 6 seq.start"]
+    E["for cyc = 1 .. run_pclk-1:<br/>@(posedge pclk) #0.1 $fwrite row"]
+    A --> B --> C --> D --> E
+```
+
 **Bound SVA — `ucie2_pipe7_sva.sv`.** A logic-free checker `bind`-ed onto the bridge
 boundary, carrying properties like `a_no_tx_while_elec_idle` (qualified by `!busy`),
 `a_lock_is_sticky`, `a_no_sync_error_once_locked`, `a_stallreq_held_until_ack`,
@@ -418,6 +606,25 @@ duplex:
 | `b2b_ucie_pcie_ucie_fd.sv` | PIPE, both directions | UCIe/FDI | full-duplex |
 | `b2b_pcie_ucie_pcie_fd.sv` | FDI, both directions | PCIe/PIPE | full-duplex |
 
+```mermaid
+flowchart TB
+    subgraph UP["b2b_ucie_pcie_ucie — joined at the PIPE seam"]
+      direction LR
+      U1["UCIe/FDI<br/>flit in"] --> BA1["bridge A"]
+      BA1 -->|"A.tx_data ══ B.rx_data"| BB1["bridge B"]
+      BB1 --> U2["UCIe/FDI<br/>flit out"]
+    end
+    subgraph PU["b2b_pcie_ucie_pcie — joined at the FDI seam"]
+      direction LR
+      P1["PCIe/PIPE<br/>word stream in"] --> BA2["bridge A"]
+      BA2 -->|"A.pl_data ══ B.lp_data"| BB2["bridge B"]
+      BB2 --> P2["PCIe/PIPE<br/>word stream out"]
+    end
+```
+
+The `_fd` variants add the reverse direction over the same seam (drive + check both
+ways at once) and are the tiers the `trace-compare-b2b` gate covers.
+
 Joining at the **PIPE** seam means a UCIe flit into A is framed, crosses the real
 PIPE link, and is recovered by B as a UCIe flit. Joining at the **FDI** seam means a
 pre-framed PIPE word stream into A is deframed to a flit, crosses the real FDI seam,
@@ -431,6 +638,30 @@ single-bridge gate and the sacred emitter are untouched.
 ## 13. Worked example — follow one flit, end to end
 
 Tie it together. A single data flit `0x…` driven at Gen5:
+
+```mermaid
+sequenceDiagram
+    participant D as FdiDriver
+    participant I as ingress
+    participant TC as tx_cdc
+    participant F as framer
+    participant P as PHY loopback
+    participant DF as deframer
+    participant RF as rx_burst_fifo
+    participant RC as rx_cdc
+    participant E as egress
+    participant M as RX monitor
+    D->>I: lp_data, wait pl_trdy
+    I->>TC: {is_os=0, data128}
+    TC->>F: block (lclk → pclk)
+    F->>P: tx_data {payload, 2'b10}, LSB-first (≥ 80b)
+    P->>DF: rx_data (+1 pclk)
+    DF->>RF: payload + is_os (block_locked)
+    RF->>RC: 1 block / pclk
+    RC->>E: block (pclk → lclk)
+    E->>M: pl_data, pl_is_os=0, pl_flit_cancel=0
+    Note over M: check_phase: recovered == driven<br/>and tx_data == frame_stream(driven)
+```
 
 1. **Driver** holds `lp_valid/lp_irdy` and the payload on `lp_data`, waits for
    `pl_trdy`. (`FdiDriver` / `fdi_driver.drive`.)

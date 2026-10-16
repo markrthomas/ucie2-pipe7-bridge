@@ -26,6 +26,23 @@ and the Makefile is written so the same targets behave correctly in each:
 | **CI** | GitHub Actions | *everything*, authoritatively — including the heavy `uvm` `--binary` build + `trace-compare` | clean toolchain, the source of truth |
 | **Remote runner** | Railway container **or** a GitHub Codespace | the heavy `uvm` gate on demand, driven from your laptop | the `--binary` UVM build OOMs the local box |
 
+```mermaid
+flowchart LR
+    DEV["your laptop / WSL"]
+    subgraph LOCAL["Local box (~5.7–8 GB)"]
+      L["lint · pyuvm · fcov · lint-uvm<br/>+ all post-/off-gate tiers"]
+    end
+    subgraph CI["GitHub Actions CI — source of truth"]
+      C["everything, incl.<br/>uvm --binary + trace-compare"]
+    end
+    subgraph REMOTE["Remote runner (Railway / Codespace)"]
+      R["heavy uvm gate on demand"]
+    end
+    DEV --> LOCAL
+    DEV -->|"push / open PR"| CI
+    DEV -->|"make uvm-remote"| REMOTE
+```
+
 The reason for the split is **RAM + toolchain**:
 
 - The SV UVM `--binary` build needs a **from-source, UVM-capable Verilator ≥ 5.050**
@@ -156,6 +173,27 @@ They are kept honest three ways:
 1. a **shared golden model** (`dv/common/models/`),
 2. a **shared stimulus vector** (`dv/common/vectors/build/`), and
 3. a **per-cycle trace** each tier emits, diffed by `tools/trace_compare.py`.
+
+```mermaid
+flowchart TB
+    VEC["shared vectors<br/>dv/common/vectors/build/"]
+    GM["shared golden model<br/>dv/common/models/"]
+    DUT["ucie2_pipe7_bridge<br/>(same RTL)"]
+    subgraph PY["PyUVM-on-cocotb — local + CI"]
+      PYT["test + scoreboard"] --> PYTR["bridge.trace"]
+    end
+    subgraph SV["SV UVM-on-Verilator — CI / Railway"]
+      SVT["test + scoreboard"] --> SVTR["bridge.trace"]
+    end
+    VEC --> PYT
+    VEC --> SVT
+    PYT --> DUT
+    SVT --> DUT
+    GM -. "self-check" .-> PYT
+    GM -. "self-check" .-> SVT
+    PYTR --> TC["tools/trace_compare.py<br/>byte-for-byte per-cycle diff"]
+    SVTR --> TC
+```
 
 ```bash
 make trace-compare   # byte-for-byte diff of the PyUVM trace vs the UVM trace
