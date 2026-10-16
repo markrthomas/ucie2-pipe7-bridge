@@ -212,7 +212,7 @@ predecessor (only the FDI front-end + top are new).
 - [x] **15. `trace_compare.py` gate**: PyUVM trace ≡ UVM trace, cycle-exact
   (`make trace-compare`).
 - [~] **16. VCS/Xcelium mirror** (`dv/uvm/vcs`): authored + review-validated, not
-  run here.
+  run here — actual run tracked as **Phase J item J6**.
 
 ### Phase E — containerization + CI + reporting
 - [x] **17. Railway image + IaC**: entrypoint runs the full gate (`make uvm`);
@@ -370,7 +370,7 @@ predecessor (only the FDI front-end + top are new).
   gearbox).** Committed scope landed in **Phase I** (items I5/I7): coverage closure
   (`make fcov` honest 100%), seeded CRV, error-path directed tests, and
   overflow/accumulator guards. Deeper/unbounded formal (k-induction) remains an
-  uncommitted stretch beyond the current bounded BMC.
+  uncommitted stretch beyond the current bounded BMC — tracked as **Phase J item J9**.
 
 ### Phase H — back-to-back (B2B) two-bridge integration
 
@@ -434,9 +434,10 @@ green and the byte-identical trace intact (un-FLAG a spec row only alongside the
 RTL change that resolves it). Subsumes items **G21+** and **H3b**.
 
 **Phase I is COMPLETE (I1–I9 all landed).** All four FLAGGED contract items are
-resolved and `rtl/ucie2_pipe7_pkg.sv` stays frozen; the only remaining items are
-explicitly-deferred future increments (e.g. cold multi-phase link training, B2B
-`is_os` wiring, deeper/unbounded formal) with no committed scope.
+resolved and `rtl/ucie2_pipe7_pkg.sv` stays frozen. The remaining
+explicitly-deferred future increments (cold multi-phase link training, B2B
+`is_os` wiring, deeper/unbounded formal, and the rest) are now tracked as
+**Phase J** below and detailed in **`docs/phase_j_future_increments.md`**.
 
 - [x] **I9. Housekeeping** — sync Phase D/E checkboxes + README status to reality
   (this plan PR).
@@ -446,14 +447,15 @@ explicitly-deferred future increments (e.g. cold multi-phase link training, B2B
   request-driven recovery); pinned the §C encoding (un-FLAGGED, impl-defined stable).
   New control-plane test `dv/pyuvm/test_link_fsm.py` (`make link-fsm`, in CI). The
   round-trip path is byte-identical by construction (it only ever requests ACTIVE, so
-  the FSM never enters RETRAIN). Cold multi-phase training bring-up left as a noted
-  future increment.
+  the FSM never enters RETRAIN). Cold multi-phase training bring-up tracked as
+  **Phase J item J3**.
 - [x] **I2. `is_os` derivation + forwarding** — DONE. New FDI `lp_is_os` input drives
   the block is_os at ingress (framer → OS/data sync header); the deframer-recovered
   bit is forwarded on a new `pl_is_os` FDI RX output. Existing all-data stimulus ties
   `lp_is_os=0` so the round-trip is byte-identical; `make is-os` drives interleaved
   OS/data and checks the recovered flit-type per flit. Un-FLAGGED §B.1. (B2B seam
-  is_os wiring tied 0 for now — a noted follow-up when OS flits traverse B2B.)
+  is_os wiring tied 0 for now — tracked as **Phase J item J1** for when OS flits
+  traverse B2B.)
 - [x] **I3. `pl_flit_cancel` semantics** — DONE. Model: the adapter retracts a flit in
   flight (`pl_flit_cancel` with `pl_valid`) when the recovered block came through an RX
   datapath error — the RX FIFO overflow is tagged per-block on the RX CDC error channel
@@ -524,6 +526,59 @@ explicitly-deferred future increments (e.g. cold multi-phase link training, B2B
     by `pl_flit_cancel` (I3). `make b2b-longburst` drives a 32×-default burst through both
     fd tiers (full recovery both directions, no sync_error) as the standing guard — GATING
     in CI. Closes I8 / H3b / Phase I. See `docs/phase_i_design_completion.md` I8d.
+
+### Phase J — future increments (uncommitted scope)
+
+Phases A–I delivered a complete, green environment. Phase J is the **tracked
+backlog** of explicitly-deferred future increments — the work previously scattered
+as inline notes across this plan and the docs, now collected in one place so the
+next session sees it at a glance. **Nothing here has committed scope**; each item
+is picked up in its own separately-approved increment. Per-item detail (current
+state, files, acceptance, risk) is in **`docs/phase_j_future_increments.md`**;
+none of these may touch the frozen `rtl/ucie2_pipe7_pkg.sv` encodings or the sacred
+`ucie2_roundtrip_test.sv` `run_phase` (J3 flags the one frozen-pkg risk).
+
+**J.A — in-env actionable** (the local/CI toolchain is sufficient):
+- [ ] **J1. B2B seam `is_os` threading** — thread the recovered `pl_is_os` across
+  the two-bridge seam (bridge A → bridge B `lp_is_os`, currently tied `1'b0`),
+  expose a `mid_pl_is_os` observation point, carry the flit-type in the B2B
+  monitors + Python models, and drive interleaved OS/data B2B stimulus. The natural
+  next item: small-medium, no frozen-pkg / no sacred-trace impact. (was I2 follow-up.)
+- [ ] **J2. Directed msgbus transaction test** (new) — a directed `make msgbus`
+  test covering `pipe7_msgbus_master`'s write-uncommitted, write-committed+ack, and
+  watchdog-timeout/`rsp_error` paths (only incidentally exercised today by
+  `test_mgmt`/`test_fcov`). Small, control-plane only.
+- [ ] **J3. Cold multi-phase link-training bring-up** — a real cold
+  RESET→(training phases)→ACTIVE sequence in `ucie2_fdi_link_fsm` (today a fast
+  ACTIVE handshake that assumes a trained PHY), extending `test_link_fsm.py`.
+  Prefer a counter-based approach reusing existing states; **adding new
+  `fdi_state_e` encodings would touch the frozen pkg** — avoid if possible.
+  (was I1 follow-up.)
+- [ ] **J4. Line-coverage floor gate** — agree a baseline and enforce `>= NN%` in
+  the advisory `[COV]` tier (stays post-gate, never folded into the green gate).
+  (was Phase F increment 2 follow-up.)
+
+**J.B — toolchain-gated** (needs an env this host / light CI lacks):
+- [ ] **J5. `make waves-uvm` / `wave-uvm`** — an `` `ifdef WAVES `` `$dumpfile`
+  hook in the SV UVM TB keyed off the reserved `-DWAVES` define + targets; needs
+  the from-source UVM Verilator (Railway/Docker heavy image). (was Phase G
+  increment 3 "Deferred".)
+- [~] **J6. VCS/Xcelium mirror actual run** — execute the authored `dv/uvm/vcs`
+  mirror on a licensed simulator; stays `[~]` until a commercial sim is available.
+  (was item 16.)
+
+**J.C — SV-tier parity follow-ups** (non-blocking, from the Phase D swarm notes):
+- [ ] **J7. SV `mgmt_agent` (ctrl/msgbus)** — an SV-UVM-side control/msgbus agent so
+  the ctrl-sweep tests (PyUVM-only today) have SV parity.
+- [ ] **J8. SV framing model** — an SV framing model for true 3-way scoreboard
+  parity (PyUVM already does 3-way; `trace_compare` covers the SV framing
+  cross-check for now).
+
+**J.D — uncommitted stretch:**
+- [ ] **J9. Deeper/unbounded formal — k-induction on the gearbox** — strengthen the
+  deframer-accumulator invariant (T3) to close an unbounded `prove`/k-induction
+  beyond today's shallow bounded BMC (`pipe7_gearbox.sby` `mode bmc depth 12`).
+  Off-gate, additive proof-engineering. (was item 21+.)
 
 ## 8. Per-commit green gate
 

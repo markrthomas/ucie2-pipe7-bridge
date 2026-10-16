@@ -1,17 +1,19 @@
-# AI restart — resume Phase I here
+# AI restart — resume here (Phase I done; Phase J backlog)
 
-**Purpose:** the one file to read when (re)starting an AI session working on
-**Phase I — design completion**. It is the live handoff: current state, the
-ordered work queue with status, where everything lives, and the exact commands +
-rules. Keep it current — tick items and move the ▶ marker as work lands.
+**Purpose:** the one file to read when (re)starting an AI session. It is the live
+handoff: current state, the ordered work queue with status, where everything
+lives, and the exact commands + rules. **Phases A–I are complete; the live work is
+the Phase J backlog below.** Keep it current — tick items and move the ▶ marker as
+work lands.
 
 > If you are a fresh session: read in this order — **`CLAUDE.md`** (constraints) →
-> **`PLAN.md` §7 Phase I** (summary) → **this file** (live status) →
-> **`docs/phase_i_design_completion.md`** (per-item detail). Then `make help`.
+> **`PLAN.md` §7 Phase J** (backlog summary) → **this file** (live status) →
+> **`docs/phase_j_future_increments.md`** (per-item detail; `docs/phase_i_design_completion.md`
+> for the now-complete Phase I). Then `make help`.
 
 ---
 
-## Current state (as of 2026-09-19)
+## Current state (as of 2026-10-16)
 
 - Env is complete and **green**: RTL datapath (Gen5 proven end-to-end), two
   cycle-accurate TBs (PyUVM + SV UVM), `trace_compare`, coverage, formal,
@@ -41,43 +43,41 @@ rules. Keep it current — tick items and move the ▶ marker as work lands.
   (32×-default burst through both fd tiers, full recovery + no sync_error) is the standing
   CI guard. All four FLAGGED contract items resolved; `ucie2_pipe7_pkg.sv` stays frozen.
 
-## Work queue (tick as you go; ▶ = do next)
+## Work queue — Phase J backlog (tick as you go; ▶ = do next)
 
-Detail for each is in `docs/phase_i_design_completion.md`.
+**Phase I is complete** (I1–I9 all landed; detail in
+`docs/phase_i_design_completion.md`). The live queue below is **Phase J — future
+increments**, the tracked backlog of deliberately-deferred work. **None has
+committed scope.** Per-item detail (current state, files, acceptance, risk) is in
+**`docs/phase_j_future_increments.md`**; summary in `PLAN.md` §7 → Phase J.
 
-- [x] **I9. Housekeeping** — sync PLAN/README status (landed with the plan PR).
-- [x] **I1. FDI link-state FSM + `fdi_state_e` encoding** — done.
-- [x] **I2. `is_os` derivation + forwarding** — done (`make is-os`; §B.1 un-FLAGGED).
-- [x] **I5. Active error-injection DV (core)** — done (`make err-inject`; sync_error +
-  loss-of-lock + re-lock). `rx_overflow`/backpressure active-injection deferred → I7.
-- [x] **I6. Gen6 PAM4 end-to-end + Gen5→Gen6 rate switch** — done (`make gen6`, PW=160).
-- [x] **I3. `pl_flit_cancel` semantics** — done (`make flit-cancel`, PW=160; retract flits
-  recovered through an RX FIFO overflow — also delivered the deferred rx_overflow injection).
-- [x] **I4. Management/sideband register mapping** — done (`make mgmt`; §F un-FLAGged, the
-  LAST FLAGGED item). New `ucie2_mgmt_sideband` transport serialises register accesses into
-  UCIe-2.0 sideband packets against a management regfile; the bridge routes `mb_req_*` by
-  address (management space → sideband, else → PIPE msgbus). **All four FLAGGED items resolved.**
-- [x] **I7. Constrained-random + coverage closure** — done (`make fcov` 39→53 bins,
-  honest 100%; seeded CRV + OS/data interleave + backpressure; closed the sync_error /
-  rx_overflow error bins + is_os + 8-state fdi_state — also lands the deferred
-  rx_overflow/backpressure injection).
-- [x] **I8. H3b** — full-duplex SV UVM + B2B trace gate + long-burst seam proof. *(done)*
-  - [x] **I8a.** Full-duplex SV UVM **UCIe** tier — `dv/uvm/sv/b2b/*_fd_*` (sided driver/
-    monitor, dual-direction scoreboard, `tb_b2b_ucie_fd`) mirroring the green PyUVM
-    `test_b2b_ucie_fd`; wired into `run-b2b`/`uvm-b2b` + CI. Lint-clean locally; `--binary`
-    runs in CI.
-  - [x] **I8b.** Full-duplex SV UVM **PCIe** tier — `dv/uvm/sv/b2b/b2b_pcie_fd_*` (sided
-    driver/monitor, dual-direction scoreboard, `tb_b2b_pcie_fd`) mirroring the green PyUVM
-    `test_b2b_pcie_fd`; wired into `run-b2b`/`uvm-b2b` + CI. Lint-clean locally; `--binary`
-    runs in CI.
-  - [x] **I8c.** Byte-identical **B2B trace-compare gate** — both fd TBs emit the shared
-    `dv/common/models/b2b_trace_format` per-cycle boundary trace (both bridges' outputs);
-    `make trace-compare-b2b` diffs PyUVM vs SV-UVM per tier (CI-gating). Lint-clean +
-    PyUVM traces verified locally; the byte-identical diff runs in CI (`--binary` SV UVM).
-  - [x] **I8d.** Credit-based FDI seam (if long-burst flow control needs it) — **not needed
-    (premise false, evidenced).** Rate-matched seam + frozen crosscheck-B RX-no-backpressure
-    ⇒ credits would contradict the contract; overflow is a fault path retracted by I3.
-    `make b2b-longburst` (32×-default burst, full recovery both directions) is the CI guard.
+*J.A — in-env actionable:*
+- [ ] ▶ **J1. B2B seam `is_os` threading** — thread the recovered `pl_is_os` across
+  the two-bridge seam (A→B `lp_is_os`, currently tied `1'b0`), expose `mid_pl_is_os`,
+  carry the flit-type in the B2B monitors + Python models, drive interleaved OS/data.
+  Small-medium; no frozen-pkg / no sacred-trace impact. **Recommended first.**
+- [ ] **J2. Directed msgbus transaction test** (new) — `make msgbus` covering
+  `pipe7_msgbus_master` write-uncommitted / write-committed+ack / watchdog-timeout.
+  Small, control-plane only.
+- [ ] **J3. Cold multi-phase link-training bring-up** — cold RESET→(training)→ACTIVE
+  in `ucie2_fdi_link_fsm` (prefer counter-based to avoid touching frozen `fdi_state_e`);
+  extend `test_link_fsm.py`. Medium.
+- [ ] **J4. Line-coverage floor gate** — enforce `>= NN%` in the post-gate `[COV]`
+  tier once a baseline is agreed. Small.
+
+*J.B — toolchain-gated (needs an env this host / light CI lacks):*
+- [ ] **J5. `make waves-uvm` / `wave-uvm`** — `` `ifdef WAVES `` `$dumpfile` hook in
+  the SV UVM TB (reserved `-DWAVES`); build/prove where the UVM Verilator lives.
+- [~] **J6. VCS/Xcelium mirror actual run** — run the authored `dv/uvm/vcs` on a
+  licensed simulator; stays `[~]` until one is available.
+
+*J.C — SV-tier parity follow-ups (non-blocking):*
+- [ ] **J7. SV `mgmt_agent` (ctrl/msgbus)** — SV parity for the PyUVM-only ctrl sweeps.
+- [ ] **J8. SV framing model** — native SV framing for true 3-way scoreboard parity.
+
+*J.D — uncommitted stretch:*
+- [ ] **J9. Deeper/unbounded formal — k-induction on the gearbox** — strengthen the
+  T3 accumulator invariant to close an unbounded proof beyond the shallow bounded BMC.
 
 *(Update the ▶ marker and check boxes here in the same PR that lands each item.)*
 
