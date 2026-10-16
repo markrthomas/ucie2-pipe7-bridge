@@ -121,7 +121,15 @@ recipes.
 - **`origin` is SSH (`git@github.com:markrthomas/ucie2-pipe7-bridge.git`) and SSH
   auth typically fails in this env.** Push over HTTPS instead (matches the sibling
   repos): `git push https://github.com/markrthomas/ucie2-pipe7-bridge.git main`.
-- Only commit/push when asked. Branch off `main` if the user wants a PR.
+- **Auto mode (SOP, decided 2026-10-16): proceed branch → PR → merge without
+  asking.** For work the user has asked you to do, don't stop to ask before
+  committing/pushing: branch off `main`, push over HTTPS, open a ready-for-review
+  PR, then (per the workspace "Finish what you open" SOP) review the diff, wait
+  for green CI, merge, and delete the branch. Never commit directly on `main`.
+  Still stop and leave the PR open for the user where the workspace SOP says to
+  (high probability of a mistake: RTL/DUT behaviour changes, changes to what a
+  regression checks, anything unverifiable end-to-end here, red/unrun CI, or a
+  reviewer asking for changes).
 - Durable knowledge goes in tracked docs (`PLAN.md`, `docs/`, this file), not a
   scratch NOTES file.
 - End commit messages with:
