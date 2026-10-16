@@ -5,12 +5,14 @@ controller-facing) to a **PCIe PIPE 7.1 MAC-facing** interface, verified by two
 independently-authored, **cycle-accurate** testbenches (PyUVM-on-cocotb and
 SystemVerilog UVM-on-Verilator).
 
-> **Status:** Phases A–H complete — a full **Gen5** datapath verified by both
+> **Status:** Phases A–I complete — a full **Gen5 + Gen6** datapath verified by both
 > cycle-accurate TBs (PyUVM + SV UVM), back-to-back two-bridge integration, the
 > byte-identical trace cross-check, coverage, formal, metrics/dashboard, CI, and
-> Railway + Codespaces runners, all green. **Phase I — design completion** (the
-> FLAGGED spec items, error/recovery paths, Gen6 end-to-end, H3b) is the active
-> work: see **`docs/phase_i_design_completion.md`** and the AI handoff
+> Railway + Codespaces runners, all green. **Phase I — design completion** is
+> **done** — all four FLAGGED spec items resolved, error/recovery paths, Gen6
+> end-to-end + rate switch, coverage closure, and H3b (full-duplex SV UVM + the
+> B2B trace gate + long-burst seam proof): see
+> **`docs/phase_i_design_completion.md`** and the AI handoff
 > **`docs/AI_RESTART.md`**. Full plan in **`PLAN.md`**; orientation in **`CLAUDE.md`**.
 
 > **New here?** **[`docs/TUTORIAL.md`](docs/TUTORIAL.md)** is a hands-on,

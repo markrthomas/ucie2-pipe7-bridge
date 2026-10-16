@@ -365,10 +365,12 @@ predecessor (only the FDI front-end + top are new).
   from the same `dv/waves/*.gtkw` layout `make wave-check` validates, and
   nothing in the gate compiles, runs or reads any of it. Bundles are
   git-ignored; the template is committed.
-- [ ] **21+. Coverage closure, randomized waveform suite, error-path directed
+- [x] **21+. Coverage closure, randomized waveform suite, error-path directed
   tests, overflow/accumulator guards, deeper/unbounded formal (k-induction on the
-  gearbox).** Enumerated + scheduled in **Phase I** (items I5/I7); deeper formal
-  remains a stretch.
+  gearbox).** Committed scope landed in **Phase I** (items I5/I7): coverage closure
+  (`make fcov` honest 100%), seeded CRV, error-path directed tests, and
+  overflow/accumulator guards. Deeper/unbounded formal (k-induction) remains an
+  uncommitted stretch beyond the current bounded BMC.
 
 ### Phase H — back-to-back (B2B) two-bridge integration
 
@@ -417,9 +419,10 @@ these configs is deferred (H3).
   `make b2b-ucie-fd` / `b2b-pcie-fd` (folded into `make b2b`). Both directions
   drive the shared vector at once and both recovered streams must match, both
   bridges locked, no sync_error. Verified LEN=8/32.
-- [ ] **H3b. Remaining:** full-duplex in the SV UVM tier, credit-based FDI-seam
+- [x] **H3b.** full-duplex in the SV UVM tier, credit-based FDI-seam
   flow control for long bursts, and a **byte-identical PyUVM↔SV-UVM per-cycle
-  trace cross-check** for the B2B configs. Scheduled as **Phase I item I8**.
+  trace cross-check** for the B2B configs. Done as **Phase I item I8** (the
+  credit seam proved unnecessary — see I8d).
 
 ### Phase I — design completion (spec-fidelity + verification depth)
 
@@ -429,6 +432,11 @@ two cycle-accurate TBs + B2B integration. Phase I closes the remaining
 work queue + AI handoff: **`docs/AI_RESTART.md`**. Every item keeps the green gate
 green and the byte-identical trace intact (un-FLAG a spec row only alongside the
 RTL change that resolves it). Subsumes items **G21+** and **H3b**.
+
+**Phase I is COMPLETE (I1–I9 all landed).** All four FLAGGED contract items are
+resolved and `rtl/ucie2_pipe7_pkg.sv` stays frozen; the only remaining items are
+explicitly-deferred future increments (e.g. cold multi-phase link training, B2B
+`is_os` wiring, deeper/unbounded formal) with no committed scope.
 
 - [x] **I9. Housekeeping** — sync Phase D/E checkboxes + README status to reality
   (this plan PR).
@@ -487,8 +495,8 @@ RTL change that resolves it). Subsumes items **G21+** and **H3b**.
   `fdi_state_e` link space. Functional coverage rises **39→53 bins, honest 100%**
   (error paths now included); this also lands the `rx_overflow`/backpressure injection
   deferred from I5/I6.
-- [ ] **I8. H3b** — full-duplex SV UVM tier + credit-based FDI seam + B2B
-  trace-compare gate. *(staged; in progress)*
+- [x] **I8. H3b** — full-duplex SV UVM tier + credit-based FDI seam + B2B
+  trace-compare gate. *(done — closes Phase I)*
   - [x] **I8a.** Full-duplex SV UVM **UCIe** tier — new `dv/uvm/sv/b2b/b2b_ucie_fd_*`
     (a sided FDI-TX driver + RX monitor, a dual-direction scoreboard, `tb_b2b_ucie_fd`)
     on the existing `b2b_ucie_pcie_ucie_fd` harness, mirroring the green PyUVM
