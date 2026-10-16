@@ -3,6 +3,27 @@
 Two independently-authored testbenches drive the same DUT and are held to a
 **cycle-accurate** cross-check (PLAN §5).
 
+```mermaid
+flowchart TB
+    VEC["shared vectors<br/>dv/common/vectors/build/"]
+    GM["shared golden model<br/>dv/common/models/"]
+    DUT["ucie2_pipe7_bridge<br/>(same RTL)"]
+    subgraph PY["PyUVM-on-cocotb — local + CI"]
+      PYT["test + scoreboard"] --> PYTR["bridge.trace"]
+    end
+    subgraph SV["SV UVM-on-Verilator — CI / Railway"]
+      SVT["test + scoreboard"] --> SVTR["bridge.trace"]
+    end
+    VEC --> PYT
+    VEC --> SVT
+    PYT --> DUT
+    SVT --> DUT
+    GM -. "self-check" .-> PYT
+    GM -. "self-check" .-> SVT
+    PYTR --> TC["tools/trace_compare.py<br/>byte-for-byte per-cycle diff"]
+    SVTR --> TC
+```
+
 ## Tiers
 
 | Tier | Where | Simulator | Runs locally? |

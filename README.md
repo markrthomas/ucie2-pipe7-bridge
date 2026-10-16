@@ -41,6 +41,36 @@ flowchart LR
     MAC <-->|PIPE 7.1| PHY
 ```
 
+## Verification at a glance
+
+The RTL is held honest by **two independently-authored** cycle-accurate TBs driven
+from one shared vector, each self-checked against a shared golden model, with their
+per-cycle traces diffed byte-for-byte:
+
+```mermaid
+flowchart TB
+    VEC["shared vectors<br/>dv/common/vectors/build/"]
+    GM["shared golden model<br/>dv/common/models/"]
+    DUT["ucie2_pipe7_bridge<br/>(same RTL)"]
+    subgraph PY["PyUVM-on-cocotb — local + CI"]
+      PYT["test + scoreboard"] --> PYTR["bridge.trace"]
+    end
+    subgraph SV["SV UVM-on-Verilator — CI / Railway"]
+      SVT["test + scoreboard"] --> SVTR["bridge.trace"]
+    end
+    VEC --> PYT
+    VEC --> SVT
+    PYT --> DUT
+    SVT --> DUT
+    GM -. "self-check" .-> PYT
+    GM -. "self-check" .-> SVT
+    PYTR --> TC["tools/trace_compare.py<br/>byte-for-byte per-cycle diff"]
+    SVTR --> TC
+```
+
+Block-by-block internals of both the design and the TBs are in
+**[`docs/DESIGN_AND_TB_TUTORIAL.md`](docs/DESIGN_AND_TB_TUTORIAL.md)**.
+
 ## Layout
 
 | Path | What |
@@ -155,6 +185,22 @@ make b2b        # both
 |--------|---------|---------------|---------------|------------------------|
 | `b2b-ucie` | `b2b_ucie_pcie_ucie.sv` | **PCIe** link (A.tx_data → B.rx_data) | UCIe/FDI | drive FDI flits into A; recover FDI flits out of B |
 | `b2b-pcie` | `b2b_pcie_ucie_pcie.sv` | **UCIe** FDI seam (A.pl_data → B.lp_data) | PCIe/PIPE | inject a framed PIPE word stream into A.rx_data; recover the re-framed stream out of B.tx_data |
+
+```mermaid
+flowchart TB
+    subgraph UP["b2b-ucie — joined at the PIPE seam"]
+      direction LR
+      U1["FDI flit in"] --> BA1["bridge A"]
+      BA1 -->|"A.tx_data ══ B.rx_data"| BB1["bridge B"]
+      BB1 --> U2["FDI flit out"]
+    end
+    subgraph PU["b2b-pcie — joined at the FDI seam"]
+      direction LR
+      P1["PIPE words in"] --> BA2["bridge A"]
+      BA2 -->|"A.pl_data ══ B.lp_data"| BB2["bridge B"]
+      BB2 --> P2["PIPE words out"]
+    end
+```
 
 Each also has a **full-duplex** variant — `make b2b-ucie-fd` / `make b2b-pcie-fd`
 (both folded into `make b2b`) — driving and checking **both directions at once**
