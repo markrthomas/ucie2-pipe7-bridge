@@ -1,63 +1,55 @@
-# shellcheck shell=bash
-# Resolve the model provider for a headless Claude Code swarm run. Sourced (not
-# exec'd) by docker/swarm.sh. Adapted from the axi-on-ucie-to-mem sibling repo.
+# docker/provider-env.sh — source me: pick the model provider for a headless Claude Code run.
+# [swarm-kit: shared file, do not fork per repo]  Sourced by docker/swarm.sh. Ported from axi-on-ucie-to-mem.
 #
-# SWARM_MODEL_PROVIDER selects the vendor the agents' opus/sonnet/haiku tier
-# aliases resolve to for the WHOLE run (Claude Code's provider is process-wide):
-#   anthropic (default)  Claude via ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN.
-#   kimi                 Kimi K3 via Moonshot's Anthropic-compatible endpoint
-#                        (KIMI_API_KEY). See the IP/compliance caution below.
-#
-# swarm_resolve_provider sets SWARM_PROVIDER (normalized) and returns non-zero if
-# the selected provider's credential is missing.
+# SWARM_MODEL_PROVIDER (alias: AOU_MODEL_PROVIDER) selects who serves the agents' opus/sonnet/haiku tiers for the
+# WHOLE run (Claude Code's provider is process-wide):
+#   anthropic (default)  CLAUDE_CODE_OAUTH_TOKEN (subscription, from `claude setup-token`) or ANTHROPIC_API_KEY
+#   kimi                 Moonshot's Anthropic-compatible endpoint; needs KIMI_API_KEY.  Tier aliases are remapped so
+#                        each agent's `model:` frontmatter keeps working.  COMPLIANCE: sends repo contents to a
+#                        China-based provider - never for proprietary / export-sensitive IP.
+# Optional tier pins (any provider): ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL; unset = the CLI's defaults.
+# Returns non-zero (does not exit) when no usable credential is present.
 
 swarm_resolve_provider() {
-  # Strip whitespace/newlines from pasted keys (a trailing newline copied into a
-  # CI/Railway secret field otherwise yields a spurious "401 API key invalid").
-  for v in ANTHROPIC_API_KEY KIMI_API_KEY CLAUDE_CODE_OAUTH_TOKEN; do
-    if [ -n "${!v:-}" ]; then printf -v "$v" '%s' "$(printf '%s' "${!v}" | tr -d '[:space:]')"; export "$v"; fi
+  local v
+  for v in ANTHROPIC_API_KEY KIMI_API_KEY CLAUDE_CODE_OAUTH_TOKEN; do      # pasted secrets often carry a newline
+    if [ -n "${!v:-}" ]; then export "$v=$(printf '%s' "${!v}" | tr -d '[:space:]')"; fi
   done
-  # A subscription OAuth token (sk-ant-oat…, from `claude setup-token`) pasted into
-  # ANTHROPIC_API_KEY is rejected by the Messages API — reroute it.
   case "${ANTHROPIC_API_KEY:-}" in
-    sk-ant-oat*)
-      CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-$ANTHROPIC_API_KEY}"; export CLAUDE_CODE_OAUTH_TOKEN
-      unset ANTHROPIC_API_KEY
-      echo "provider(anthropic): ANTHROPIC_API_KEY held an OAuth token — rerouting to CLAUDE_CODE_OAUTH_TOKEN." >&2 ;;
+    sk-ant-oat*)   # a subscription OAuth token stored under the API-key name
+      export CLAUDE_CODE_OAUTH_TOKEN="${CLAUDE_CODE_OAUTH_TOKEN:-$ANTHROPIC_API_KEY}"; unset ANTHROPIC_API_KEY
+      echo "provider: ANTHROPIC_API_KEY held an OAuth token (sk-ant-oat...) - using it as CLAUDE_CODE_OAUTH_TOKEN" >&2 ;;
   esac
-
-  SWARM_PROVIDER="${SWARM_MODEL_PROVIDER:-anthropic}"
+  SWARM_PROVIDER="${SWARM_MODEL_PROVIDER:-${AOU_MODEL_PROVIDER:-anthropic}}"
   case "$SWARM_PROVIDER" in
     anthropic)
-      if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-        echo "provider: anthropic (Console API key)" >&2
+      if [ -n "${ANTHROPIC_BASE_URL:-}" ] && [ -n "${ANTHROPIC_AUTH_TOKEN:-}" ]; then
+        echo "provider: anthropic-compatible endpoint ${ANTHROPIC_BASE_URL}" >&2
       elif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
         unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN 2>/dev/null || true
         echo "provider: anthropic (subscription OAuth token)" >&2
+      elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+        echo "provider: anthropic (Console API key)" >&2
       else
-        echo "provider(anthropic): no credential — set ANTHROPIC_API_KEY (sk-ant-api…) or" >&2
-        echo "  CLAUDE_CODE_OAUTH_TOKEN (sk-ant-oat…, from 'claude setup-token')." >&2
+        echo "provider: no credential - set CLAUDE_CODE_OAUTH_TOKEN (claude setup-token) or ANTHROPIC_API_KEY" >&2
+        echo "          (or SWARM_MODEL_PROVIDER=kimi with KIMI_API_KEY)" >&2
         return 3
-      fi
-      # Pin the tier aliases so selection is deterministic, not the account default.
-      #   opus  = manager (deep agentic reasoning, fixes, git/PR)
-      #   sonnet= infra-agent (well-scoped Dockerfile/CI/script edits)
-      #   haiku = dv-env-testers (fan out in parallel, run+report; cheap/fast)
-      export ANTHROPIC_DEFAULT_OPUS_MODEL="${ANTHROPIC_OPUS_MODEL:-claude-opus-5}"
-      export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_SONNET_MODEL:-claude-sonnet-5}"
-      export ANTHROPIC_DEFAULT_HAIKU_MODEL="${ANTHROPIC_HAIKU_MODEL:-claude-haiku-4-5}"
-      echo "provider: anthropic (opus=${ANTHROPIC_DEFAULT_OPUS_MODEL}, sonnet=${ANTHROPIC_DEFAULT_SONNET_MODEL}, haiku=${ANTHROPIC_DEFAULT_HAIKU_MODEL})" >&2 ;;
+      fi ;;
     kimi)
-      [ -z "${KIMI_API_KEY:-}" ] && { echo "provider(kimi): KIMI_API_KEY not set." >&2; return 3; }
+      if [ -z "${KIMI_API_KEY:-}" ]; then
+        echo "provider(kimi): KIMI_API_KEY is not set" >&2; return 3
+      fi
       export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-https://api.moonshot.ai/anthropic}"
-      export ANTHROPIC_AUTH_TOKEN="$KIMI_API_KEY"; unset ANTHROPIC_API_KEY
+      export ANTHROPIC_AUTH_TOKEN="$KIMI_API_KEY"
+      unset ANTHROPIC_API_KEY CLAUDE_CODE_OAUTH_TOKEN
       export ANTHROPIC_DEFAULT_OPUS_MODEL="${KIMI_OPUS_MODEL:-kimi-k3}"
       export ANTHROPIC_DEFAULT_SONNET_MODEL="${KIMI_SONNET_MODEL:-kimi-k2.7-code}"
       export ANTHROPIC_DEFAULT_HAIKU_MODEL="${KIMI_HAIKU_MODEL:-kimi-k2.7-code-highspeed}"
-      echo "provider: kimi -> ${ANTHROPIC_BASE_URL}" >&2
-      echo "  ⚠ IP/COMPLIANCE: this sends repo contents to a China-based provider. Do NOT use" >&2
-      echo "    for export-sensitive IP; verify Moonshot is not Entity/SDN-listed first." >&2 ;;
-    *) echo "provider: unknown SWARM_MODEL_PROVIDER='$SWARM_PROVIDER' (want anthropic|kimi)." >&2; return 4 ;;
+      echo "provider: kimi -> ${ANTHROPIC_BASE_URL} (opus=${ANTHROPIC_DEFAULT_OPUS_MODEL} sonnet=${ANTHROPIC_DEFAULT_SONNET_MODEL} haiku=${ANTHROPIC_DEFAULT_HAIKU_MODEL})" >&2
+      echo "  COMPLIANCE/IP CAUTION: this run sends repo contents (RTL/DV, diffs, prompts) to Moonshot, a China-based" >&2
+      echo "  provider. Do not use it for proprietary or export-sensitive IP; check current export-control status first." >&2 ;;
+    *)
+      echo "provider: unknown SWARM_MODEL_PROVIDER='$SWARM_PROVIDER' (anthropic | kimi)" >&2; return 2 ;;
   esac
-  return 0
+  export SWARM_PROVIDER
 }

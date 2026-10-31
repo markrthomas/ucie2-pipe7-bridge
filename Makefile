@@ -231,6 +231,9 @@ help:
 	@echo "                      (same RUNNER=): make uvm-attach (terminal into the run),"
 	@echo "                      uvm-remote-logs, uvm-remote-status, uvm-remote-down.)"
 	@echo "  make clean         remove build artifacts"
+	@echo "  swarm      Swarm A (verification) via Claude Code; swarm-rr = Swarm B (random regression); swarm-dry = show the command"
+	@echo "  batch      the Railway batch (docker/entrypoint.sh ci); board = swarm status; heavy T=<t> = one heavy target at a time"
+	@echo "  swarm-profile / swarm-kit-check   print .claude/swarm.env / check kit drift (shared kit: markrthomas/dv-swarm-kit)"
 
 # ---- Toolchain check / install ----------------------------------------------
 # `tools` verifies every tier's tools and installs the MISSING ones (apt + pip,
@@ -704,16 +707,8 @@ railway-swarm:
 railway-swarm-agents:
 	RAILWAY="$(RAILWAY_CLI)" $(SWARM_ENV) tools/railway_swarm.sh agents
 
-# The DV swarm: Docker + .claude/agents manager-subagent model (adapted from the
-# axi-on-ucie-to-mem sibling). Runs Claude Code NON-bare; the swarm-manager
-# dispatches per-tier dv-env-testers + the infra-agent, fixes reds, and opens a
-# PR (a human merges; CI validates --binary UVM + trace_compare on the PR).
-# Needs `claude` on PATH + a credential (ANTHROPIC_API_KEY or
-# CLAUDE_CODE_OAUTH_TOKEN) and, to push/PR, GITHUB_TOKEN.
-#   make swarm                       # default finalization task
-#   SWARM_TASK="do X" make swarm     # custom task
-swarm:
-	bash docker/swarm.sh
+# The DV swarm comes from the shared dv-swarm-kit (swarm.mk): `make swarm` (Swarm A), `make swarm-rr` (Swarm B),
+# `make swarm-dry`; a one-off task is `docker/entrypoint.sh agent "do X"` (was SWARM_TASK="do X" make swarm).
 
 # Point at whatever railway binary is on PATH (falls back to `railway`).
 RAILWAY_CLI ?= $(shell command -v railway 2>/dev/null || echo railway)
@@ -788,3 +783,6 @@ clean:
 .PHONY: stress
 stress:
 	@echo "[STRESS] n/a: no stress/randomized tier in this repo yet (see DV_STANDARDS.md)"
+
+# shared swarm/infra targets (markrthomas/dv-swarm-kit)
+include swarm.mk
