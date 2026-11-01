@@ -1,109 +1,152 @@
 #!/usr/bin/env bash
-# Entrypoint for the ucie2-pipe7-bridge UVM-on-Verilator image.
-#
-# Bundles UVM-capable Verilator (built from source) + the Accellera UVM library.
-# Appends the toolchain overrides to every `make` call so the bundled tools are
-# always used, and runs a memory preflight before the RAM-heavy --binary build.
-#
-#   (no args)        -> make uvm   <overrides>   (full SV UVM gate, from repo root:
-#                       gen-vectors + lint + --binary build+run, seeded-random ==
-#                       CI; NOT `-C dv/uvm/vlt`, which skips the shared vector)
-#   make <targets>   -> make <targets> <overrides>  (repo-root targets, e.g.
-#                       `make uvm`, `make lint-uvm`, `make trace-compare`)
-#   shell            -> interactive shell now (local `docker run -it ... shell`),
-#                       or, with no TTY, hold the container open for `railway ssh`
-#   <anything else>  -> exec verbatim (verilator --version, bash, ...)
-#
-# Debug / attach env switches (for opening a terminal into a RUNNING container —
-# see docker/shell.sh):
-#   DEBUG_SHELL=1  -> skip the gate; open a shell (TTY) or hold open (no TTY)
-#   KEEP_ALIVE=1   -> run the gate as usual, THEN hold the container open so
-#                     `railway ssh` / `docker exec` can attach to inspect artifacts
+# docker/entrypoint.sh — container entrypoint (Railway batch job / Codespaces / local run).
+# [swarm-kit: shared file, do not fork per repo; repo specifics come from .claude/swarm.env]
+#   (no args) | ci   : the repo's full batch, then publish the results to the `metrics-data` branch:
+#                        METRICS=yes -> make metrics (+ CROSSCHECK_TARGET) + make dashboard
+#                        otherwise   -> make $CI_TARGET $MAKE_OVERRIDES, full log kept in logs/batch.log
+#                      exit non-zero if anything failed
+#   make <targets>   : make <targets> $MAKE_OVERRIDES (same log trimming / preflight as ci)
+#   swarm [args]     : the agent swarm (docker/swarm.sh; credentials: docker/provider-env.sh)
+#   agent "<task>"   : one headless Claude Code session on a one-off task (no manager agent)
+#   shell            : interactive shell, or (no TTY) hold the container open for `railway ssh`
+#   <cmd...>         : run an arbitrary command inside the image
+# Knobs (Railway variables / env; profile defaults in .claude/swarm.env):
+#   MAKE_OVERRIDES   extra make args for bundled tools, e.g. "VERILATOR=/opt/verilator/bin/verilator UVM_HOME=..."
+#   MIN_MEM_MB       memory floor checked before CI_TARGET / HEAVY_TARGETS (fail fast, exit 3, instead of an
+#                    OOM-killed cc1plus);
+#                    SKIP_MEM_CHECK=1 bypasses it
+#   LOG_QUIET        1 = stream only signal lines ([BANNER]s, errors, warnings, PASS/FAIL) and keep the full
+#                    transcript in logs/batch.log (default: on when running on Railway, which rate-limits logs)
+#   KEEP_ALIVE=1     after the batch, hold the container open (railway ssh in to inspect)
+#   DEBUG_SHELL=1    skip the batch and hold the container open
+#   POST_BATCH       shell command run after the batch (e.g. "make metrics dashboard"); additive - it cannot change
+#                    the batch's exit code
+#   PUBLISH_METRICS  unset = publish when a token is set (Railway); 1 = publish; empty or 0 = don't
+# Ported from eth-dj-to-pcie-pipe-bridge, axi-on-ucie-to-mem and ucie2-pipe7-bridge.
 set -euo pipefail
+# the image keeps the repo at /repo or /work; a checkout mounted at /repo (swarm workflow) wins
+if [ -d /repo ] && [ -f /repo/.claude/swarm.env ]; then cd /repo; else cd "$(dirname "$0")/.."; fi
+. docker/profile.sh
+CI_TARGET="${CI_TARGET:-ci}"
+read -r -a overrides <<< "${MAKE_OVERRIDES:-}"
 
-# A stale VERILATOR_ROOT hard-errors the launcher; the flow doesn't need it.
-unset VERILATOR_ROOT || true
-
-MAKE_ARGS=(
-  "VERILATOR=${VERILATOR:-/opt/verilator/bin/verilator}"
-  "UVM_HOME=${UVM_HOME:-/opt/verilator/uvm}"
-  "BUILD_JOBS=${BUILD_JOBS:-1}"
-)
-
-# --- memory preflight: fail fast before the multi-GB --binary compile ---------
-container_mem_mb() {
-  local lim=""
-  if [ -r /sys/fs/cgroup/memory.max ]; then
-    lim="$(cat /sys/fs/cgroup/memory.max 2>/dev/null)"
-  elif [ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]; then
-    lim="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)"
-  fi
-  if [ -z "${lim}" ] || [ "${lim}" = "max" ] || { [ "${lim}" -gt 1000000000000 ] 2>/dev/null; }; then
-    awk '/MemTotal/{printf "%d", $2/1024}' /proc/meminfo 2>/dev/null
+# Build parallelism.  DV Makefiles often default to `JOBS ?= $(nproc)`, and in a container nproc reports the
+# HOST's cores while the memory limit is a few GB: a UVM / Verilator build then runs that many g++ jobs at once
+# and the container thrashes or is killed.  Unless JOBS is set, derive it from the cgroup memory limit
+# (about 3 GB per job), capped by the visible cores.
+mem_limit() { cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || echo max; }
+if [ -z "${JOBS:-}" ]; then
+  cores="$(nproc 2>/dev/null || echo 4)"
+  lim="$(mem_limit)"
+  if [ "$lim" != "max" ] && [ "$lim" -lt 1099511627776 ] 2>/dev/null; then
+    jobs=$(( lim / 1073741824 / 3 ))
   else
-    echo "$(( lim / 1024 / 1024 ))"
+    jobs=4                                   # no (usable) memory limit visible
   fi
-}
+  [ "$jobs" -lt 1 ] && jobs=1
+  [ "$jobs" -gt "$cores" ] && jobs="$cores"
+  export JOBS="$jobs"
+  echo "entrypoint: JOBS=$JOBS (cores=$cores, memory limit=$lim; set JOBS to override)"
+fi
 
-preflight_resources() {
-  [ -n "${UVM_SKIP_RESCHECK:-}" ] && return 0
-  local min_mb="${UVM_MIN_MEM_MB:-6144}"
-  local mem_mb cpus
-  mem_mb="$(container_mem_mb)"
-  cpus="$(nproc 2>/dev/null || echo '?')"
-  echo "[preflight] container memory: ${mem_mb:-?} MB (floor ${min_mb} MB) | vCPUs: ${cpus} | BUILD_JOBS=${BUILD_JOBS:-1}"
-  if [ -n "${mem_mb}" ] && [ "${mem_mb}" -lt "${min_mb}" ] 2>/dev/null; then
-    echo "[preflight] ERROR: ${mem_mb} MB is below the ${min_mb} MB floor for the UVM --binary build." >&2
-    echo "[preflight]   Fix: raise instance memory (Railway: Settings -> Resource Limits, ~8 GB)," >&2
-    echo "[preflight]   or export UVM_SKIP_RESCHECK=1 to bypass this guard." >&2
-    exit 1
-  fi
-}
-
-# Open (TTY) or hold open (no TTY) an interactive shell so a terminal can attach.
-# TTY  -> `docker run -it ... shell` drops you straight into bash.
-# No TTY (Railway/CI) -> sleep so `railway ssh`/`docker exec` can connect later.
-open_shell() {
-  echo "[entrypoint] debug shell. toolchain: ${MAKE_ARGS[0]}  ${MAKE_ARGS[1]}"
-  if [ -t 0 ]; then
-    exec bash -l
+preflight() {   # preflight <targets...>: fail fast before a RAM-heavy build that would only be OOM-killed minutes in
+  [ -n "${MIN_MEM_MB:-}" ] && [ "${SKIP_MEM_CHECK:-0}" != 1 ] || return 0
+  local t heavy=0 lim mb      # only the batch target and HEAVY_TARGETS are guarded; `make lint` on a small box is fine
+  for t in "$@"; do [[ " $CI_TARGET ${HEAVY_TARGETS:-} " == *" $t "* ]] && heavy=1; done
+  [ "$heavy" = 1 ] || return 0
+  lim="$(mem_limit)"
+  if [ "$lim" = max ] || ! [ "$lim" -lt 1099511627776 ] 2>/dev/null; then
+    mb="$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || echo 0)"
   else
-    echo "[entrypoint] no TTY -> holding the container open. Attach with:"
-    echo "[entrypoint]   railway ssh      (Railway)   |   docker exec -it <c> bash   (Docker)"
-    echo "[entrypoint]   then: cd /work && make lint-uvm ${MAKE_ARGS[*]}  (or: make uvm)"
-    exec sleep infinity
+    mb=$(( lim / 1048576 ))
+  fi
+  echo "[preflight] memory ${mb} MB (floor ${MIN_MEM_MB} MB), vCPUs $(nproc 2>/dev/null || echo ?), JOBS=${JOBS}"
+  if [ "$mb" -gt 0 ] && [ "$mb" -lt "$MIN_MEM_MB" ]; then
+    echo "[preflight] ERROR: below the ${MIN_MEM_MB} MB floor - raise the instance memory (Railway: Settings ->" >&2
+    echo "[preflight]   Resource Limits) or set SKIP_MEM_CHECK=1 to bypass." >&2
+    return 1
   fi
 }
 
-# Run the gate WITHOUT exec (so KEEP_ALIVE can hold the container open afterward).
-# The gate is the repo-root `make uvm` (gen-vectors + lint + --binary build+run),
-# so the container verifies the SAME seeded-random stimulus as CI -- running the
-# sub-Makefile `ci` directly would skip gen-vectors and silently fall back to the
-# compiled-in directed ramp. UVM_HOME/VERILATOR/BUILD_JOBS ride in via MAKE_ARGS.
-run_gate() {
-  if [ "$#" -eq 0 ]; then
-    preflight_resources
-    make uvm "${MAKE_ARGS[@]}"
-  elif [ "$1" = "make" ]; then
+# Railway rate-limits log ingestion; a Verilator-heavy gate (one ~500-char g++ line per source file) blows through it
+# and buries the banners.  Quiet mode streams only signal lines and keeps the full transcript in logs/batch.log,
+# tail-dumped on failure.  The exit status is always make's, never grep's.
+if [ -z "${LOG_QUIET:-}" ]; then
+  LOG_QUIET=0; [ -n "${RAILWAY_SERVICE_ID:-}${RAILWAY_PROJECT_ID:-}${RAILWAY_ENVIRONMENT:-}" ] && LOG_QUIET=1
+fi
+SIGNAL_RE="${LOG_SIGNAL_RE:-(\[[A-Z][A-Za-z0-9_ -]+\])|([Ee]rror)|([Ww]arning)|(%Error)|(%Warning)|(PASS)|(FAIL)|(\bsorry:)|(Assertion)|(\\\$finish)|(make(\[[0-9]+\])?: \*\*\*)}"
+run_make() {    # run_make <targets...>; returns make's status; full log in logs/batch.log
+  mkdir -p logs
+  local rc=0
+  if [ "$LOG_QUIET" = 1 ]; then
+    set +e
+    make "$@" "${overrides[@]}" 2>&1 | tee logs/batch.log | grep --line-buffered -E "$SIGNAL_RE"
+    rc=${PIPESTATUS[0]}
+    set -e
+    if [ "$rc" -ne 0 ]; then echo "=== make $* FAILED (rc=$rc) - last 200 lines of logs/batch.log ==="; tail -n 200 logs/batch.log; fi
+  else
+    make "$@" "${overrides[@]}" 2>&1 | tee logs/batch.log || rc=$?     # pipefail: rc is make's status
+  fi
+  return "$rc"
+}
+
+hold_open() { echo "entrypoint: holding the container open ($1) - attach with \`railway ssh\`"; exec sleep infinity; }
+
+mode="${1:-ci}"
+case "$mode" in
+  ci)
+    [ "${DEBUG_SHELL:-0}" = 1 ] && hold_open "DEBUG_SHELL=1, batch skipped"
+    rc=0
+    preflight "$CI_TARGET" || exit 3
+    if [ "${METRICS:-no}" = "yes" ]; then
+      # METRICS_FLOWS default comes from swarm.env; a Railway variable overrides it
+      make metrics METRICS_FLOWS="${METRICS_FLOWS:-$CI_TARGET}" METRICS_NOTE="${METRICS_NOTE:-container run}" "${overrides[@]}" || rc=$?
+      # a cross-check needs every env; with a reduced METRICS_FLOWS it would always fail, so it runs only
+      # for the profile's default flow list or RUN_CROSSCHECK=1
+      if [ -n "${CROSSCHECK_TARGET:-}" ] && { [ "${RUN_CROSSCHECK:-}" = "1" ] || [[ " $SWARM_ENV_OVERRIDES " != *" METRICS_FLOWS "* ]]; }; then
+        make "$CROSSCHECK_TARGET" "${overrides[@]}" || rc=$?
+      fi
+      make dashboard || rc=$?
+    else
+      echo "entrypoint: make $CI_TARGET ${MAKE_OVERRIDES:-} (full log: logs/batch.log)"
+      run_make "$CI_TARGET" || rc=$?
+    fi
+    if [ -n "${POST_BATCH:-}" ]; then
+      echo "entrypoint: POST_BATCH: ${POST_BATCH} (additive: cannot change rc=$rc)"
+      bash -c "$POST_BATCH" || echo "entrypoint: POST_BATCH failed (ignored)"
+    fi
+    # the container is ephemeral: publish the results to the repo's metrics-data branch;
+    # a publishing problem is reported but does not change the run's exit code
+    case "${PUBLISH_METRICS-auto}" in
+      ""|0) echo "entrypoint: publishing off (PUBLISH_METRICS='${PUBLISH_METRICS}')" ;;
+      *)    docker/publish_metrics.sh "$rc" || echo "entrypoint: WARNING: publishing the results failed (see above)" ;;
+    esac
+    echo "entrypoint: done (rc=$rc)"
+    [ "${KEEP_ALIVE:-0}" = 1 ] && hold_open "KEEP_ALIVE=1, batch rc=$rc"
+    exit "$rc"
+    ;;
+  make)
     shift
-    case " $* " in *" uvm "*|*" uvm-b2b "*|*" run "*|*" ci "*|*" all "*) preflight_resources ;; esac
-    make "$@" "${MAKE_ARGS[@]}"
-  else
-    exec "$@"   # verbatim (verilator --version, bash, ...); replaces this process
-  fi
-}
-
-# DEBUG_SHELL / `shell` arg -> skip the gate entirely and open/hold a shell.
-if [ "${DEBUG_SHELL:-}" = "1" ] || [ "${1:-}" = "shell" ]; then
-  open_shell
-fi
-
-# KEEP_ALIVE -> run the gate, then hold open for attach (inspect artifacts, re-run).
-if [ "${KEEP_ALIVE:-}" = "1" ]; then
-  set +e; run_gate "$@"; rc=$?; set -e
-  echo "[entrypoint] gate finished (rc=${rc}); KEEP_ALIVE=1 -> holding open. Attach with:"
-  echo "[entrypoint]   railway ssh   |   docker exec -it <c> bash"
-  exec sleep infinity
-fi
-
-run_gate "$@"
+    preflight "$@" || exit 3
+    rc=0; run_make "$@" || rc=$?
+    [ "${KEEP_ALIVE:-0}" = 1 ] && hold_open "KEEP_ALIVE=1, make rc=$rc"
+    exit "$rc"
+    ;;
+  swarm)
+    shift
+    exec docker/swarm.sh "$@"
+    ;;
+  agent|claude)
+    shift
+    task="${*:-${CLAUDE_TASK:-}}"
+    [ -n "$task" ] || { [ ! -t 0 ] && task="$(cat)"; }
+    [ -n "$task" ] || { echo "entrypoint: agent needs a task (argument, CLAUDE_TASK, or stdin)" >&2; exit 2; }
+    exec docker/swarm.sh --prompt "$task" --agent none
+    ;;
+  shell)
+    if [ -t 0 ]; then exec bash -l; else hold_open "shell requested, no TTY"; fi
+    ;;
+  *)
+    exec "$@"
+    ;;
+esac

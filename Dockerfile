@@ -37,7 +37,7 @@ RUN mkdir -p "${VERILATOR_PREFIX}/uvm" \
     && cp -a test_regress/t/uvm/. "${VERILATOR_PREFIX}/uvm/"
 
 # ---- Stage 2: runtime image that builds + runs the UVM env ------------------
-FROM ubuntu:24.04 AS uvm
+FROM ubuntu:24.04 AS tools
 ARG VERILATOR_PREFIX=/opt/verilator
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8 PYTHONIOENCODING=UTF-8 PYTHONUTF8=1
@@ -66,10 +66,20 @@ ENV VERILATOR="${VERILATOR_PREFIX}/bin/verilator" \
     PATH="${VERILATOR_PREFIX}/bin:${PATH}"
 # Serialize the --binary UVM precompiled-header compile (several GB per job).
 ENV BUILD_JOBS=1
+# dv-swarm-kit: Claude Code CLI + git + gh for swarm runs (devcontainer, swarm workflow, Railway swarm service).
+ARG WITH_CLAUDE=0
+RUN if [ "$WITH_CLAUDE" = "1" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends git nodejs npm gh \
+      && npm install -g @anthropic-ai/claude-code && rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# --- uvm: toolchain (`tools`, also the devcontainer target) + this repo ---------------------------------
+FROM tools AS uvm
+
 WORKDIR /work
 COPY . /work
-COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+# dv-swarm-kit scripts (entrypoint, swarm, provider switch) run from the repo copy.
+RUN chmod +x /work/docker/*.sh
 # Fail fast if the toolchain is incomplete.
 RUN "${VERILATOR}" --version \
     && test -f "${UVM_HOME}/uvm_pkg_all_v2020_3_1_dpi.svh" \
@@ -79,5 +89,9 @@ RUN "${VERILATOR}" --version \
     && command -v fst2vcd >/dev/null \
     && sby --help >/dev/null \
     && python3 -c "import click"
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/work/docker/entrypoint.sh"]
 CMD []
+
+
+# dv-swarm-kit: the swarm workflow builds --target full; same content as the stage above.
+FROM uvm AS full

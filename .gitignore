@@ -58,3 +58,5 @@ package-lock.json
 # Local notes / editor
 NOTES
 .mcp.json
+/dv/random/runs/
+/docker/last-run-metrics.json

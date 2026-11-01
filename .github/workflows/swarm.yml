@@ -1,136 +1,44 @@
-name: DV swarm
-
-# Manual "Run workflow" button that runs the headless DV swarm (swarm-manager →
-# per-tier dv-env-testers + infra-agent) on a GitHub runner: it runs each DV tier,
-# fixes what is red, and opens a PR. CI (uvm-verilator.yml) validates the
-# authoritative --binary UVM + byte-identical trace_compare on that PR.
-# See docs/phase_d_swarm.md.
-#
-# Requires repo/environment secrets:
-#   CLAUDE_CODE_OAUTH_TOKEN  subscription token (sk-ant-oat…, `claude setup-token`).
-#                            This is the ONLY Anthropic credential wired in — the
-#                            metered Console-key (ANTHROPIC_API_KEY) path is
-#                            deliberately NOT plumbed here so a swarm run can never
-#                            bill per-token. provider-env.sh still supports a
-#                            Console key if you re-add the env var, but by default
-#                            the swarm runs on the subscription only.
-#   KIMI_API_KEY             (provider=kimi only)
-#   SWARM_GITHUB_TOKEN       (optional) PAT with contents:write + pull-requests:write
-#                            so the PR it opens DOES trigger CI; falls back to
-#                            the built-in GITHUB_TOKEN (whose PRs do not trigger CI).
+# Manual-only: run the Claude Code agent swarm on this repo.  [swarm-kit: shared file, do not fork per repo]
+# The job itself lives in markrthomas/dv-swarm-kit (swarm-run.yml) so every DV repo runs the same thing.
+# Needs a repository secret CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) or ANTHROPIC_API_KEY.
+# The swarm may push a `swarm/<date>-<topic>` branch; a human reviews and merges.
+name: swarm
 
 on:
   workflow_dispatch:
     inputs:
       task:
-        description: "Task for the swarm (blank = the default finalization task)"
-        required: false
-        default: ""
-      max_parallel:
-        description: "Max DV tiers in parallel (blank = auto-size to RAM)"
-        required: false
-        default: ""
-      provider:
-        description: "Model provider"
-        required: false
-        default: "anthropic"
+        description: "which swarm"
         type: choice
-        options: [ anthropic, kimi ]
-  # Callable as a reusable workflow so a scheduler (e.g. a one-shot timed fire in a
-  # fresh subscription window) can invoke this exact swarm with `secrets: inherit`
-  # — no cross-workflow dispatch token needed. Same inputs; `type: choice` becomes
-  # `string` here (workflow_call has no choice type). The `inputs` context below
-  # resolves for both triggers.
-  workflow_call:
-    inputs:
-      task:
-        required: false
-        type: string
-        default: ""
-      max_parallel:
-        required: false
-        type: string
+        options:
+          - docker/swarm-task.md
+          - docker/rr-swarm-task.md
+          - docker/plan-swarm-task.md
+        default: docker/swarm-task.md
+      model:
+        description: "model for the manager agent (empty = CLI default)"
         default: ""
       provider:
-        required: false
-        type: string
-        default: "anthropic"
+        description: "model provider (kimi sends repo contents to Moonshot - see docker/provider-env.sh)"
+        type: choice
+        options: [anthropic, kimi]
+        default: anthropic
 
 permissions:
   contents: write
   pull-requests: write
 
-concurrency:
-  group: dv-swarm
-  cancel-in-progress: false
-
 jobs:
   swarm:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Install RTL tools (apt Verilator + Icarus)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends verilator iverilog
-          verilator --version | head -1
-          iverilog -V | head -1
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install cocotb + cocotb_coverage + pyuvm (fcov/pyuvm tiers)
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install "cocotb==1.9.2" "cocotb_coverage==1.2.0" "pyuvm==4.0.1"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install Claude Code CLI
-        run: npm install -g @anthropic-ai/claude-code
-
-      # Formal tier (Phase F increment 3): apt yosys + SymbiYosys from YosysHQ/sby
-      # (pure Python scripts, seconds to install — NOT a source compile), z3 as the
-      # BMC solver. Pre-installing here lets the swarm
-      # RUN `make formal` to self-verify instead of building a toolchain inside its
-      # timed budget (which is what timed out the from-source attempt).
-      - name: Install formal tools (apt yosys + SymbiYosys)
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends yosys z3
-          # SymbiYosys (sby) is a Python program that imports `click`.
-          python -m pip install --break-system-packages click
-          git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby
-          sudo make -C /tmp/sby install
-          yosys --version | head -1
-          sby --version || true
-
-      - name: Run the DV swarm
-        env:
-          SWARM_MODEL_PROVIDER: ${{ inputs.provider }}
-          # ANTHROPIC_API_KEY (metered Console-key path) intentionally NOT set —
-          # the swarm authenticates on the subscription OAuth token below, so a run
-          # can never bill per-token. Re-add it only to deliberately go metered.
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.SWARM_GITHUB_TOKEN || github.token }}
-          # Author the swarm's commits as the triggering user so the branch's CI
-          # is not held as action_required.
-          GIT_AUTHOR_NAME: ${{ github.actor }}
-          GIT_AUTHOR_EMAIL: ${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com
-          SWARM_MAX_PARALLEL: ${{ inputs.max_parallel }}
-          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
-          # If the entrypoint runs the swarm-manager as a background task, print
-          # mode otherwise TERMINATES it at a 600s wait ceiling (observed on a G4
-          # fire: job exited 0 but pushed nothing). 0 = wait indefinitely; the
-          # job's `timeout-minutes: 60` still bounds the run.
-          CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: "0"
-        run: bash docker/swarm.sh "${{ inputs.task }}"
+    uses: markrthomas/dv-swarm-kit/.github/workflows/swarm-run.yml@v0
+    with:
+      task: ${{ inputs.task }}
+      model: ${{ inputs.model }}
+      provider: ${{ inputs.provider }}
+    secrets:
+      # passed explicitly: `secrets: inherit` only works within one organization/enterprise, not across a
+      # personal account's repos calling dv-swarm-kit
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      KIMI_API_KEY: ${{ secrets.KIMI_API_KEY }}
+      SWARM_GITHUB_TOKEN: ${{ secrets.SWARM_GITHUB_TOKEN }}
