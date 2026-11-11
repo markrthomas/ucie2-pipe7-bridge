@@ -55,7 +55,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # needs the `click` module at runtime. This is the formal tier (Phase F
 # increment 3, `make formal`).
 RUN pip3 install --break-system-packages --no-cache-dir click \
-    && git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby \
+    && git clone https://github.com/YosysHQ/sby /tmp/sby && git -C /tmp/sby checkout 79fc9eddca5e33a28cc2f2cd19c9825efd9a7255 \
     && make -C /tmp/sby install \
     && rm -rf /tmp/sby
 COPY --from=verilator-build /opt/verilator /opt/verilator
@@ -68,9 +68,10 @@ ENV VERILATOR="${VERILATOR_PREFIX}/bin/verilator" \
 ENV BUILD_JOBS=1
 # dv-swarm-kit: Claude Code CLI + git + gh for swarm runs (devcontainer, swarm workflow, Railway swarm service).
 ARG WITH_CLAUDE=0
+ARG CLAUDE_CODE_VERSION=2.1.322   # pinned: bump on purpose, in a PR
 RUN if [ "$WITH_CLAUDE" = "1" ]; then \
       apt-get update && apt-get install -y --no-install-recommends git nodejs npm gh \
-      && npm install -g @anthropic-ai/claude-code && rm -rf /var/lib/apt/lists/*; \
+      && npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # --- uvm: toolchain (`tools`, also the devcontainer target) + this repo ---------------------------------
