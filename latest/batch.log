@@ -9,7 +9,7 @@ make[1]: Entering directory '/work/dv/uvm/vlt'
 /opt/verilator/bin/verilator --lint-only --timing --assert -Wno-fatal -Wno-TIMESCALEMOD --top-module tb_ucie2_pipe7 +incdir+/work/dv/uvm/sv +incdir+/opt/verilator/uvm +incdir+/work/dv/uvm/vlt /opt/verilator/uvm/uvm_pkg_all_v2020_3_1_dpi.svh /work/rtl/ucie2_pipe7_pkg.sv /work/rtl/pipe7_cdc_elastic_buf.sv /work/rtl/pipe7_gen6_datapath.sv /work/rtl/pipe7_mac_ctrl_fsm.sv /work/rtl/pipe7_mac_datapath_ra.sv /work/rtl/pipe7_msgbus_master.sv /work/rtl/pipe7_regfile.sv /work/rtl/pipe7_rx_burst_fifo.sv /work/rtl/pipe7_rx_deframer_gb.sv /work/rtl/pipe7_tx_framer_gb.sv /work/rtl/ucie2_fdi_egress.sv /work/rtl/ucie2_fdi_ingress.sv /work/rtl/ucie2_fdi_link_fsm.sv /work/rtl/ucie2_mgmt_sideband.sv /work/rtl/ucie2_pipe7_bridge.sv /work/dv/uvm/sv/ucie2_pipe7_sva.sv /work/dv/uvm/sv/ucie2_pipe7_if.sv /work/dv/uvm/sv/ucie2_pipe7_uvm_pkg.sv /work/dv/uvm/sv/tb_ucie2_pipe7.sv
 - V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev v5.050
 - Verilator: Built from 34.214 MB sources in 393 modules, into 14.976 MB in 2052 C++ files needing 0.000 MB
-- Verilator: Walltime 6.292 s (elab=1.128, cvt=4.532, bld=0.000); cpu 5.476 s on 1 threads; allocated 295.930 MB
+- Verilator: Walltime 5.227 s (elab=0.975, cvt=3.718, bld=0.000); cpu 5.174 s on 1 threads; allocated 295.930 MB
 [lint-uvm] SV UVM env elaborates OK
 rm -rf /work/dv/uvm/vlt/obj
 mkdir -p /work/dv/uvm/vlt/obj
@@ -34,7 +34,7 @@ rm Vtb_ucie2_pipe7__ALL.verilator_deplist.tmp
 make[2]: Leaving directory '/work/dv/uvm/vlt/obj'
 - V e r i l a t i o n   R e p o r t: Verilator 5.050 2026-07-01 rev v5.050
 - Verilator: Built from 34.214 MB sources in 393 modules, into 22.338 MB in 2223 C++ files needing 114.666 MB
-- Verilator: Walltime 154.457 s (elab=1.099, cvt=5.262, bld=147.335); cpu 6.322 s on 1 threads; allocated 297.465 MB
+- Verilator: Walltime 125.850 s (elab=1.021, cvt=4.499, bld=119.636); cpu 6.095 s on 1 threads; allocated 297.465 MB
 /work/dv/uvm/vlt/obj/Vtb_ucie2_pipe7 +UVM_NO_RELNOTES +VEC=/work/dv/common/vectors/build/fdi_flits.vec  +N_FLITS=8 +RUN_PCLK=480  +TRACE=/work/dv/uvm/vlt/obj/bridge.trace 2>&1 | tee /work/dv/uvm/vlt/obj/run.log
 UVM_INFO @ 0: reporter [RNTST] Running test ucie2_roundtrip_test...
 UVM_INFO /work/dv/uvm/sv/env/bridge_scoreboard.sv(52) @ 971100: uvm_test_top.env.sb [SB] roundtrip: 8 driven, tx 13 words, recovered 8
@@ -52,8 +52,8 @@ UVM_FATAL :    0
 
 - /opt/verilator/uvm/uvm_pkg_all_v2020_3_1_dpi.svh:20085: Verilog $finish
 - S i m u l a t i o n   R e p o r t: Verilator 5.050 2026-07-01
-- Verilator: $finish at 971ns; walltime 0.064 s; speed 15.288 us/s
-- Verilator: cpu 0.055 s on 1 threads; allocated 42 MB
+- Verilator: $finish at 971ns; walltime 0.056 s; speed 17.214 us/s
+- Verilator: cpu 0.054 s on 1 threads; allocated 42 MB
 ----- UVM report counts -----
 UVM_INFO :    2
 UVM_WARNING :    0
