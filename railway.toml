@@ -1,0 +1,13 @@
+# Railway config-as-code for the ucie2-pipe7-bridge batch service (repo-owned: KIT_KEEP in .claude/swarm.env).
+# Runs ON DEMAND: Redeploy, or a push to main that changes more than docs.  No cron.  The entrypoint's default `ci`
+# mode runs CI_TARGET=uvm with MAKE_OVERRIDES / MIN_MEM_MB from .claude/swarm.env and publishes to metrics-data.
+# Builds docker/Dockerfile.railway: the prebuilt public toolchain image + this repo (Railway builds stop at ~40 min).
+# The service's dashboard settings win over this file for restart policy and cron: keep Restart Policy = Never and
+# the Cron Schedule field EMPTY there.  .railway/railway.ts describes the same service for the `railway` CLI.
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "docker/Dockerfile.railway"
+watchPatterns = ["**", "!**/*.md", "!docs/**", "!doc/**", "!.github/**", "!LICENSE*"]
+
+[deploy]
+restartPolicyType = "NEVER"
