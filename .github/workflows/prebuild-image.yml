@@ -38,3 +38,16 @@ jobs:
           docker build -f Dockerfile -t "$IMAGE:latest" -t "$IMAGE:$GITHUB_SHA" .
           docker push "$IMAGE:latest"
           docker push "$IMAGE:$GITHUB_SHA"
+
+      # The image above contains this repo's source (COPY . /work), so it stays PRIVATE.  Railway needs a PUBLIC
+      # base image (it cannot pull a private one during a build), so publish the toolchain on its own - the
+      # `tools` stage: Verilator + UVM, z3, yosys, sby, no repo source - for docker/Dockerfile.railway.
+      - name: Build and push the source-free toolchain image (tools-main)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TOOLS="ghcr.io/${GITHUB_REPOSITORY,,}/dv-tools"
+          docker build -f Dockerfile --target tools -t "$TOOLS:tools-main" -t "$TOOLS:tools-$GITHUB_SHA" .
+          docker push "$TOOLS:tools-main"
+          docker push "$TOOLS:tools-$GITHUB_SHA"

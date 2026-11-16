@@ -1,0 +1,28 @@
+# docker/Dockerfile.railway - the Railway batch image, built in about a minute.
+#
+# Railway stops any build that runs longer than ~40 minutes, and compiling the UVM-capable Verilator from source can
+# exceed that whenever Railway's layer cache misses.  So Railway compiles nothing: it starts from the source-free
+# toolchain image CI publishes (.github/workflows/prebuild-image.yml, `--target tools`, tag tools-main) and adds the
+# repo on top - the same contents as the Dockerfile `uvm`/`full` stages.  Railway and CI run the same tools.
+#
+# TOOLS_IMAGE: a Railway service variable of the same name overrides it (e.g. a pinned tools-<sha>).  The package must
+# be PUBLIC - Railway cannot pull a private base image during a build - and holds only the toolchain, no repo source.
+# (The ucie2-pipe7-uvm image, which does contain the source, stays private.)  After a merge that changes the
+# Dockerfile, Redeploy once the prebuild workflow has pushed the new tools-main.
+ARG TOOLS_IMAGE=ghcr.io/markrthomas/ucie2-pipe7-bridge/dv-tools:tools-main
+FROM ${TOOLS_IMAGE}
+
+WORKDIR /work
+COPY . /work
+RUN chmod +x /work/docker/*.sh
+# Fail fast if the toolchain is incomplete (same check as the Dockerfile `uvm` stage).
+RUN "${VERILATOR}" --version \
+    && test -f "${UVM_HOME}/uvm_pkg_all_v2020_3_1_dpi.svh" \
+    && test -f "${UVM_HOME}/v2020_3_1/dpi/uvm_dpi.cc" \
+    && z3 --version \
+    && yosys -V \
+    && command -v fst2vcd >/dev/null \
+    && sby --help >/dev/null \
+    && python3 -c "import click"
+ENTRYPOINT ["/work/docker/entrypoint.sh"]
+CMD []
